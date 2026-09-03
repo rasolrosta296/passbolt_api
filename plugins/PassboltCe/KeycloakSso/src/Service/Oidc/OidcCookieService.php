@@ -11,6 +11,7 @@ final class OidcCookieService
 {
     public const BROWSER_BINDING_COOKIE = '__Host-passbolt_keycloak_binding';
     public const RESULT_COOKIE = '__Host-passbolt_keycloak_result';
+    public const LINK_RESULT_COOKIE = '__Host-passbolt_keycloak_link_result';
 
     /**
      * Create the short-lived browser-binding cookie.
@@ -26,6 +27,14 @@ final class OidcCookieService
     public static function result(string $value): Cookie
     {
         return self::create($value, OidcConfigurationDto::RESULT_TTL_SECONDS, self::RESULT_COOKIE);
+    }
+
+    /**
+     * Create a purpose-specific one-time identity-link result cookie.
+     */
+    public static function linkResult(string $value): Cookie
+    {
+        return self::create($value, OidcConfigurationDto::RESULT_TTL_SECONDS, self::LINK_RESULT_COOKIE);
     }
 
     /**

@@ -4,8 +4,11 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Service\Oidc;
 
 use Passbolt\KeycloakSso\Error\Exception\OidcValidationException;
+use Passbolt\KeycloakSso\Model\Dto\OidcCallbackResult;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
+use Passbolt\KeycloakSso\Service\Identity\PrepareIdentityLinkService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use SensitiveParameter;
 use Throwable;
@@ -21,6 +24,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
         private readonly AuthorizationCodeExchangeService $codeExchange,
         private readonly IdTokenValidationService $idTokenValidation,
         private readonly ExistingUserDiscoveryService $users,
+        private readonly ?PrepareIdentityLinkService $identityLinks = null,
     ) {
     }
 
@@ -34,7 +38,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
         string $browserBinding,
         #[SensitiveParameter]
         string $code
-    ): string {
+    ): OidcCallbackResult {
         if (!preg_match('/^[A-Za-z0-9_-]{43}$/', $state)) {
             throw new OidcValidationException('invalid_state');
         }
@@ -58,9 +62,21 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
             }
             $idToken = $this->codeExchange->exchange($code, $claimed['pkceVerifier']);
             $identity = $this->idTokenValidation->validate($idToken, $transaction->nonce_hash);
-            $this->users->findExactlyOne($identity->email);
+            if ($transaction->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF) {
+                $this->users->findExactlyOne($identity->email);
+            } elseif ($transaction->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK) {
+                if ($this->identityLinks === null) {
+                    throw new OidcValidationException('identity_link_unavailable');
+                }
+                $this->identityLinks->prepare($transaction, $identity);
+            } else {
+                throw new OidcValidationException('invalid_transaction_purpose');
+            }
 
-            return $this->transactions->succeed($transaction->id, OidcConfigurationDto::RESULT_TTL_SECONDS);
+            return new OidcCallbackResult(
+                $this->transactions->succeed($transaction->id, OidcConfigurationDto::RESULT_TTL_SECONDS),
+                $transaction->purpose
+            );
         } catch (Throwable $exception) {
             $reason = $exception instanceof OidcValidationException
                 ? $exception->reasonCode()

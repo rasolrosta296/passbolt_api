@@ -5,7 +5,11 @@ namespace Passbolt\KeycloakSso\Service\Oidc;
 
 use Passbolt\KeycloakSso\Configuration\OidcConfigurationService;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Service\Audit\IdentityLinkAuditService;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
+use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
+use Passbolt\KeycloakSso\Service\Identity\IdentityLinkProofProtector;
+use Passbolt\KeycloakSso\Service\Identity\PrepareIdentityLinkService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\TransactionSecretProtector;
@@ -53,12 +57,21 @@ final class OidcServiceFactory implements OidcServiceFactoryInterface
         $jwks = new JwksProvider($configuration, $discovery, $httpClient, $cache);
         $protector = new TransactionSecretProtector($configuration->transactionEncryptionKey);
 
+        $users = new ExistingUserDiscoveryService();
+        $links = new IdentityLinkPersistenceService();
+
         return new OidcCallbackService(
             $configuration,
             new ClaimOidcTransactionService($protector),
             new AuthorizationCodeExchangeService($configuration, $discovery, $httpClient),
             new IdTokenValidationService($configuration, $jwks),
-            new ExistingUserDiscoveryService()
+            $users,
+            new PrepareIdentityLinkService(
+                $users,
+                $links,
+                new IdentityLinkProofProtector($protector),
+                new IdentityLinkAuditService()
+            )
         );
     }
 

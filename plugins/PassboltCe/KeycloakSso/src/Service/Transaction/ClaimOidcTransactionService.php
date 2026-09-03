@@ -98,6 +98,7 @@ final class ClaimOidcTransactionService implements OidcResultConsumerInterface
                 'status' => KeycloakSsoTransaction::STATUS_FAILED,
                 'failure_code' => $failureCode,
                 'pkce_verifier_ciphertext' => null,
+                'link_identity_ciphertext' => null,
                 'modified' => DateTime::now(),
             ],
             ['id' => $id, 'status' => KeycloakSsoTransaction::STATUS_PROCESSING]
@@ -143,6 +144,7 @@ final class ClaimOidcTransactionService implements OidcResultConsumerInterface
             [
                 'result_token_hash' => CreateOidcTransactionService::hash($resultToken),
                 'status' => KeycloakSsoTransaction::STATUS_SUCCEEDED,
+                'purpose' => KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
                 'result_expires >' => $now,
             ]
         );
