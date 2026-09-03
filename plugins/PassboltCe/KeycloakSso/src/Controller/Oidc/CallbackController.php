@@ -10,6 +10,7 @@ use Passbolt\KeycloakSso\Error\Exception\OidcConfigurationException;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
 use Passbolt\KeycloakSso\Error\Exception\OidcValidationException;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Audit\OidcAuditService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCookieService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
@@ -48,16 +49,25 @@ final class CallbackController extends AppController
             $codeValue = $this->getRequest()->getQuery('code');
             $code = is_string($codeValue) ? $codeValue : '';
 
-            $resultToken = $callback->process($state, $binding, $code);
+            $result = $callback->process($state, $binding, $code);
+            if ($result->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF) {
+                $cookie = OidcCookieService::result($result->token);
+                $resultRoute = '/auth/keycloak/result.json';
+            } elseif ($result->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK) {
+                $cookie = OidcCookieService::linkResult($result->token);
+                $resultRoute = '/auth/keycloak/link/confirm';
+            } else {
+                throw new OidcValidationException('invalid_transaction_purpose');
+            }
             $this->setResponse(
                 $this->getResponse()
-                    ->withCookie(OidcCookieService::result($resultToken))
+                    ->withCookie($cookie)
                     ->withExpiredCookie(OidcCookieService::expired(OidcCookieService::BROWSER_BINDING_COOKIE))
                     ->withHeader('Cache-Control', 'no-store')
                     ->withHeader('Pragma', 'no-cache')
             );
             $audit->success();
-            $this->redirect('/auth/keycloak/result.json', 303);
+            $this->redirect($resultRoute, 303);
 
             return $this->getResponse();
         } catch (Throwable $exception) {
