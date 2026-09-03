@@ -65,15 +65,15 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
             new ExistingUserDiscoveryService()
         );
 
-        $resultToken = $service->process($created->state, $created->browserBinding, 'one-time-code');
+        $result = $service->process($created->state, $created->browserBinding, 'one-time-code');
 
-        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/', $resultToken);
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/', $result->token);
         $this->assertSame($created->pkceVerifier, $tokenClient->form['code_verifier']);
         $this->assertSame('one-time-code', $tokenClient->form['code']);
-        $transactions->consumeResult($resultToken);
+        $transactions->consumeResult($result->token);
 
         $this->expectException(OidcTransactionException::class);
-        $transactions->consumeResult($resultToken);
+        $transactions->consumeResult($result->token);
     }
 
     private function configuration(): OidcConfigurationDto

@@ -3,12 +3,15 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Test\TestCase\Controller\Oidc;
 
+use App\Model\Entity\User;
 use App\Test\Factory\AuthenticationTokenFactory;
 use App\Test\Factory\UserFactory;
 use Firebase\JWT\JWT;
 use OpenSSLAsymmetricKey;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Model\Dto\PendingIdentityLink;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
+use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Oidc\AuthorizationCodeExchangeService;
 use Passbolt\KeycloakSso\Service\Oidc\IdTokenValidationService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCallbackService;
@@ -61,7 +64,8 @@ final class CallbackSecurityTest extends KeycloakSsoIntegrationTestCase
 
     public function testRealValidOidcPipelineAndMatchingUserStillDoNotAuthenticatePassbolt(): void
     {
-        UserFactory::make(['username' => 'user@example.com'])->user()->active()->notDisabled()->persist();
+        $user = UserFactory::make(['username' => 'user@example.com'])->user()->active()->notDisabled()->persist();
+        self::assertInstanceOf(User::class, $user);
         $configuration = new OidcConfigurationDto(
             'https://keyclock.gobaz.ir/realms/passbolt',
             'passbolt',
@@ -70,6 +74,14 @@ final class CallbackSecurityTest extends KeycloakSsoIntegrationTestCase
             random_bytes(32)
         );
         $protector = new TransactionSecretProtector($configuration->transactionEncryptionKey);
+        (new IdentityLinkPersistenceService())->create(
+            $user->id,
+            new PendingIdentityLink(
+                $configuration->issuer,
+                'immutable-keycloak-subject',
+                'user@example.com'
+            )
+        );
         $created = (new CreateOidcTransactionService($protector))->create(
             $configuration->issuer,
             $configuration->clientId,

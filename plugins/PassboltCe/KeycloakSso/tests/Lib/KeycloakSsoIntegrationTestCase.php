@@ -5,6 +5,7 @@ namespace Passbolt\KeycloakSso\Test\Lib;
 
 use App\Test\Lib\AppIntegrationTestCase;
 use Cake\Core\Configure;
+use Cake\ORM\TableRegistry;
 use Passbolt\Edition\Model\Dto\EditionDto;
 use Passbolt\Edition\Service\EditionManager;
 use Passbolt\Edition\Test\Lib\TestingEditionManager;
@@ -26,10 +27,12 @@ abstract class KeycloakSsoIntegrationTestCase extends AppIntegrationTestCase
         $this->enableFeaturePlugin(KeycloakSsoPlugin::class);
         parent::setUp();
         $this->enableFeaturePlugin(KeycloakSsoPlugin::class);
+        $this->clearKeycloakSsoTables();
     }
 
     public function tearDown(): void
     {
+        $this->clearKeycloakSsoTables();
         if ($this->previousEnabledEnvironment === false) {
             putenv(KeycloakSsoEnvironment::ENABLED);
         } else {
@@ -37,5 +40,15 @@ abstract class KeycloakSsoIntegrationTestCase extends AppIntegrationTestCase
         }
         EditionManager::setInstance($this->previousEditionManager);
         parent::tearDown();
+    }
+
+    /**
+     * Keep plugin-owned foreign-key tables isolated between integration tests.
+     */
+    private function clearKeycloakSsoTables(): void
+    {
+        $locator = TableRegistry::getTableLocator();
+        $locator->get('Passbolt/KeycloakSso.KeycloakSsoIdentities')->deleteAll([]);
+        $locator->get('Passbolt/KeycloakSso.KeycloakSsoTransactions')->deleteAll([]);
     }
 }
