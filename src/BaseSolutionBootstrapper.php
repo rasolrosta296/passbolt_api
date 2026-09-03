@@ -19,6 +19,7 @@ namespace App;
 use App\Utility\Application\FeaturePluginAwareTrait;
 use Cake\Core\Configure;
 use Cake\Core\PluginApplicationInterface;
+use Passbolt\KeycloakSso\Configuration\KeycloakSsoEnvironment;
 use Passbolt\WebInstaller\Middleware\WebInstallerMiddleware;
 
 /**
@@ -44,6 +45,12 @@ class BaseSolutionBootstrapper
         }
 
         $this->addFeaturePluginIfEnabled($app, 'JwtAuthentication');
+        $this->addFeaturePluginIfEnabled(
+            $app,
+            'KeycloakSso',
+            [],
+            KeycloakSsoEnvironment::isEnabled()
+        );
 
         $app->addPlugin('Passbolt/Edition', ['bootstrap' => true, 'routes' => true]);
 
