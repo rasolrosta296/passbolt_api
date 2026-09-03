@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Service\Transaction;
 use App\Utility\UuidFactory;
 use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
+use Cake\Validation\Validation;
 use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
 use Passbolt\KeycloakSso\Model\Dto\CreatedOidcTransaction;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
@@ -31,8 +32,21 @@ final class CreateOidcTransactionService
         string $clientId,
         string $redirectUri,
         string $configurationHash,
-        int $ttlSeconds
+        int $ttlSeconds,
+        string $purpose = KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
+        ?string $requestedUserId = null
     ): CreatedOidcTransaction {
+        $isLink = $purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK;
+        if (
+            !in_array($purpose, [
+                KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
+                KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK,
+            ], true) ||
+            ($isLink && (!is_string($requestedUserId) || !Validation::uuid($requestedUserId))) ||
+            (!$isLink && $requestedUserId !== null)
+        ) {
+            throw new OidcTransactionException('The OIDC transaction purpose is invalid.');
+        }
         ($this->cleanup ?? new CleanupOidcTransactionsService())->run();
         $id = UuidFactory::uuid();
         $state = self::randomBase64Url(32);
@@ -54,6 +68,8 @@ final class CreateOidcTransactionService
             'issuer' => $issuer,
             'client_id' => $clientId,
             'redirect_uri' => $redirectUri,
+            'purpose' => $purpose,
+            'requested_user_id' => $requestedUserId,
             'status' => KeycloakSsoTransaction::STATUS_PENDING,
             'expires' => DateTime::now()->addSeconds($ttlSeconds),
         ];

@@ -28,12 +28,14 @@ final class CleanupOidcTransactionsService
                 'failure_code' => 'transaction_expired',
                 'pkce_verifier_ciphertext' => null,
                 'result_token_hash' => null,
+                'link_identity_ciphertext' => null,
                 'modified' => $now,
             ],
             [
                 'status IN' => [
                     KeycloakSsoTransaction::STATUS_PENDING,
                     KeycloakSsoTransaction::STATUS_PROCESSING,
+                    KeycloakSsoTransaction::STATUS_LINKING,
                 ],
                 'expires <=' => $now,
             ]
@@ -42,6 +44,7 @@ final class CleanupOidcTransactionsService
             [
                 'status' => KeycloakSsoTransaction::STATUS_RESULT_CONSUMED,
                 'result_token_hash' => null,
+                'link_identity_ciphertext' => null,
                 'modified' => $now,
             ],
             [

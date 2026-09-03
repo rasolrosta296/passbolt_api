@@ -16,6 +16,9 @@ use Cake\ORM\Entity;
  * @property string $issuer
  * @property string $client_id
  * @property string $redirect_uri
+ * @property string $purpose
+ * @property string|null $requested_user_id
+ * @property string|null $link_identity_ciphertext
  * @property string $status
  * @property string|null $result_token_hash
  * @property string|null $failure_code
@@ -31,6 +34,10 @@ final class KeycloakSsoTransaction extends Entity
     public const STATUS_SUCCEEDED = 'succeeded';
     public const STATUS_FAILED = 'failed';
     public const STATUS_RESULT_CONSUMED = 'result_consumed';
+    public const STATUS_LINKING = 'linking';
+
+    public const PURPOSE_IDENTITY_PROOF = 'identity_proof';
+    public const PURPOSE_IDENTITY_LINK = 'identity_link';
 
     protected array $_accessible = ['*' => false];
 
@@ -41,6 +48,7 @@ final class KeycloakSsoTransaction extends Entity
         'pkce_verifier_ciphertext',
         'configuration_hash',
         'result_token_hash',
+        'link_identity_ciphertext',
     ];
 
     /**
