@@ -33,6 +33,16 @@ final class JwksProviderTest extends TestCase
         $provider->get(true);
     }
 
+    public function testRejectsMalformedJwks(): void
+    {
+        $key = $this->validKey('one');
+        $key['n'] = 'too-short';
+        $provider = $this->provider(['keys' => [$key]]);
+
+        $this->expectException(OidcNetworkException::class);
+        $provider->get(true);
+    }
+
     public function testAcceptsJwksRotationOnForcedRefresh(): void
     {
         $provider = $this->provider(
@@ -64,7 +74,7 @@ final class JwksProviderTest extends TestCase
             'kid' => $kid,
             'use' => 'sig',
             'alg' => 'RS256',
-            'n' => 'AQAB',
+            'n' => str_repeat('A', 342),
             'e' => 'AQAB',
         ];
     }

@@ -3,12 +3,14 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Test\TestCase\Utility\Http;
 
+use Cake\Http\Client;
+use Cake\Http\Client\Response;
 use Cake\TestSuite\TestCase;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Test\Utility\StaticHostResolver;
 use Passbolt\KeycloakSso\Utility\Http\SafeOidcHttpClient;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Passbolt\KeycloakSso\Test\Utility\StaticHostResolver;
 
 final class SafeOidcHttpClientTest extends TestCase
 {
@@ -17,7 +19,7 @@ final class SafeOidcHttpClientTest extends TestCase
         $client = new SafeOidcHttpClient($this->configuration(), null, new StaticHostResolver(['203.0.113.10']));
 
         $client->assertSafeUrl('https://keyclock.gobaz.ir/realms/passbolt/protocol/openid-connect/certs');
-        $this->addToAssertionCount(1);
+        $this->assertTrue(true);
     }
 
     public function testRejectsHttpEndpoint(): void
@@ -34,6 +36,66 @@ final class SafeOidcHttpClientTest extends TestCase
 
         $this->expectException(OidcNetworkException::class);
         $client->assertSafeUrl('https://evil.example/jwks');
+    }
+
+    public function testRejectsRedirectResponse(): void
+    {
+        $response = $this->createMock(Response::class);
+        $response->method('getStatusCode')->willReturn(302);
+        $cakeClient = $this->createMock(Client::class);
+        $cakeClient->method('get')->willReturn($response);
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            $cakeClient,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->expectException(OidcNetworkException::class);
+        $client->requestJson('GET', 'https://keyclock.gobaz.ir/realms/passbolt/.well-known/openid-configuration');
+    }
+
+    public function testRejectsOversizedResponse(): void
+    {
+        $response = $this->createMock(Response::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getHeaderLine')->willReturn((string)(OidcConfigurationDto::MAX_HTTP_RESPONSE_BYTES + 1));
+        $cakeClient = $this->createMock(Client::class);
+        $cakeClient->method('get')->willReturn($response);
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            $cakeClient,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->expectException(OidcNetworkException::class);
+        $client->requestJson('GET', 'https://keyclock.gobaz.ir/realms/passbolt/.well-known/openid-configuration');
+    }
+
+    public function testPinsValidatedDnsAddressAndLimitsTransfer(): void
+    {
+        $url = 'https://keyclock.gobaz.ir/realms/passbolt/.well-known/openid-configuration';
+        $response = $this->createMock(Response::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getHeaderLine')->willReturn('2');
+        $response->method('getStringBody')->willReturn('{}');
+        $cakeClient = $this->createMock(Client::class);
+        $cakeClient->expects($this->once())
+            ->method('get')
+            ->with($url, [], $this->callback(static function (array $options): bool {
+                $curl = $options['curl'] ?? [];
+
+                return ($curl[CURLOPT_RESOLVE][0] ?? null) === 'keyclock.gobaz.ir:443:203.0.113.10' &&
+                    ($curl[CURLOPT_MAXFILESIZE] ?? null) === OidcConfigurationDto::MAX_HTTP_RESPONSE_BYTES &&
+                    isset($curl[CURLOPT_XFERINFOFUNCTION]);
+            }))
+            ->willReturn($response);
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            $cakeClient,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->assertSame([], $client->requestJson('GET', $url));
     }
 
     #[DataProvider('unsafeAddressProvider')]

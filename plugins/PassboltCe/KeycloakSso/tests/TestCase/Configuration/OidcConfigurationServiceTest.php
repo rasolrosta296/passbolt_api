@@ -48,6 +48,15 @@ final class OidcConfigurationServiceTest extends TestCase
         (new OidcConfigurationService())->load($environment);
     }
 
+    public function testRejectsIssuerOutsideExactRealmPath(): void
+    {
+        $environment = $this->validEnvironment();
+        $environment[KeycloakSsoEnvironment::ISSUER] = 'https://keyclock.gobaz.ir/other/realms/passbolt';
+
+        $this->expectException(OidcConfigurationException::class);
+        (new OidcConfigurationService())->load($environment);
+    }
+
     public function testRejectsInvalidRedirectUri(): void
     {
         $environment = $this->validEnvironment();

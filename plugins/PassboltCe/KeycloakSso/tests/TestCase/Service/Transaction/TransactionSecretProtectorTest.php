@@ -26,6 +26,7 @@ final class TransactionSecretProtectorTest extends TestCase
         $protector = new TransactionSecretProtector(random_bytes(32));
         $ciphertext = $protector->encrypt('pkce-verifier', 'transaction:configuration');
         $decoded = base64_decode($ciphertext, true);
+        assert(is_string($decoded));
         $decoded[30] = chr(ord($decoded[30]) ^ 1);
 
         $this->expectException(OidcTransactionException::class);
