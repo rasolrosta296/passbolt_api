@@ -8,8 +8,11 @@ use Passbolt\KeycloakSso\Model\Dto\OidcAuthorizationRequest;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
 
-final class AuthorizationRequestService
+final class AuthorizationRequestService implements AuthorizationRequestProviderInterface
 {
+    /**
+     * Construct the authorization request service.
+     */
     public function __construct(
         private readonly OidcConfigurationDto $configuration,
         private readonly OidcDiscoveryService $discovery,
@@ -17,6 +20,9 @@ final class AuthorizationRequestService
     ) {
     }
 
+    /**
+     * Create the transaction and its trusted-provider redirect.
+     */
     public function create(): OidcAuthorizationRequest
     {
         $discovery = $this->discovery->get();
@@ -34,6 +40,9 @@ final class AuthorizationRequestService
         );
     }
 
+    /**
+     * Build an Authorization Code Flow URL with nonce, state, and PKCE S256.
+     */
     public static function buildAuthorizationUrl(
         OidcConfigurationDto $configuration,
         string $authorizationEndpoint,

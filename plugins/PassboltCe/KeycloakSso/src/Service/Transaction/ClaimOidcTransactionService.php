@@ -7,11 +7,16 @@ use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
 use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
+use Passbolt\KeycloakSso\Service\Oidc\OidcResultConsumerInterface;
+use SensitiveParameter;
 
-final class ClaimOidcTransactionService
+final class ClaimOidcTransactionService implements OidcResultConsumerInterface
 {
     use LocatorAwareTrait;
 
+    /**
+     * Construct the service with authenticated transaction-secret protection.
+     */
     public function __construct(private readonly TransactionSecretProtector $protector)
     {
     }
@@ -19,8 +24,13 @@ final class ClaimOidcTransactionService
     /**
      * @return array{transaction: \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction, pkceVerifier: string}
      */
-    public function claim(string $state, string $browserBinding, string $configurationHash): array
-    {
+    public function claim(
+        #[SensitiveParameter]
+        string $state,
+        #[SensitiveParameter]
+        string $browserBinding,
+        string $configurationHash
+    ): array {
         $table = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoTransactions');
         /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction|null $transaction */
         $transaction = $table->find()
@@ -64,15 +74,23 @@ final class ClaimOidcTransactionService
         }
 
         $associatedData = $transaction->id . ':' . $transaction->configuration_hash;
-        $pkceVerifier = $this->protector->decrypt(
-            (string)$transaction->pkce_verifier_ciphertext,
-            $associatedData
-        );
+        try {
+            $pkceVerifier = $this->protector->decrypt(
+                (string)$transaction->pkce_verifier_ciphertext,
+                $associatedData
+            );
+        } catch (OidcTransactionException $exception) {
+            $this->fail($transaction->id, 'protected_secret_invalid');
+            throw $exception;
+        }
         $transaction->status = KeycloakSsoTransaction::STATUS_PROCESSING;
 
         return ['transaction' => $transaction, 'pkceVerifier' => $pkceVerifier];
     }
 
+    /**
+     * Terminally fail a claimed transaction and erase its PKCE verifier.
+     */
     public function fail(string $id, string $failureCode): void
     {
         $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoTransactions')->updateAll(
@@ -86,6 +104,9 @@ final class ClaimOidcTransactionService
         );
     }
 
+    /**
+     * Complete a claimed transaction and return a one-time result handle.
+     */
     public function succeed(string $id, int $resultTtlSeconds): string
     {
         $resultToken = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
@@ -106,7 +127,11 @@ final class ClaimOidcTransactionService
         return $resultToken;
     }
 
-    public function consumeResult(string $resultToken): void
+    /**
+     * Atomically consume a one-time result handle.
+     */
+    public function consumeResult(#[SensitiveParameter]
+    string $resultToken): void
     {
         $now = DateTime::now();
         $affected = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoTransactions')->updateAll(

@@ -4,26 +4,44 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Utility\Http;
 
 use Cake\Http\Client;
+use CurlHandle;
 use JsonException;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use SensitiveParameter;
 use Throwable;
 
 final class SafeOidcHttpClient implements OidcHttpClientInterface
 {
     private readonly string $allowedOrigin;
 
+    /**
+     * Construct a client pinned to the configured issuer origin.
+     */
     public function __construct(
-        private readonly OidcConfigurationDto $configuration,
+        OidcConfigurationDto $configuration,
         private readonly ?Client $client = null,
         private readonly ?HostResolverInterface $resolver = null,
     ) {
         $this->allowedOrigin = self::origin($configuration->issuer);
     }
 
-    public function requestJson(string $method, string $url, array $form = []): array
+    /**
+     * Retrieve a size-bounded JSON response without redirects.
+     *
+     * @return array<string, mixed>
+     */
+    public function requestJson(string $method, string $url, #[SensitiveParameter]
+    array $form = []): array
     {
-        $this->assertSafeUrl($url);
+        $addresses = $this->assertSafeUrl($url);
+        $parts = parse_url($url);
+        assert(is_array($parts) && isset($parts['host']));
+        $port = $parts['port'] ?? 443;
+        $pinnedAddresses = array_map(
+            static fn (string $address): string => str_contains($address, ':') ? '[' . $address . ']' : $address,
+            $addresses
+        );
         $client = $this->client ?? new Client([
             'timeout' => OidcConfigurationDto::HTTP_TIMEOUT_SECONDS,
             'redirect' => 0,
@@ -34,11 +52,34 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
                 'redirect' => 0,
                 'timeout' => OidcConfigurationDto::HTTP_TIMEOUT_SECONDS,
                 'headers' => ['Accept' => 'application/json'],
+                'curl' => [
+                    CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+                    CURLOPT_RESOLVE => [
+                        $parts['host'] . ':' . $port . ':' . implode(',', $pinnedAddresses),
+                    ],
+                    CURLOPT_MAXFILESIZE => OidcConfigurationDto::MAX_HTTP_RESPONSE_BYTES,
+                    CURLOPT_NOPROGRESS => false,
+                    CURLOPT_XFERINFOFUNCTION => static function (
+                        CurlHandle $_handle,
+                        float $downloadTotal,
+                        float $downloaded,
+                        float $_uploadTotal,
+                        float $_uploaded
+                    ): int {
+                        $maximum = OidcConfigurationDto::MAX_HTTP_RESPONSE_BYTES;
+
+                        return $downloadTotal > $maximum || $downloaded > $maximum ? 1 : 0;
+                    },
+                ],
             ];
             if ($form !== []) {
                 $options['type'] = 'form';
             }
-            $response = $client->send(strtoupper($method), $url, $form, $options);
+            $response = match (strtoupper($method)) {
+                'GET' => $client->get($url, [], $options),
+                'POST' => $client->post($url, $form, $options),
+                default => throw new OidcNetworkException('The OIDC HTTP method is not allowed.'),
+            };
         } catch (Throwable $exception) {
             throw new OidcNetworkException('The OIDC provider request failed.', 0, $exception);
         }
@@ -72,7 +113,12 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
         return $decoded;
     }
 
-    public function assertSafeUrl(string $url): void
+    /**
+     * Reject unsafe schemes, origins, credentials, and resolved destinations.
+     *
+     * @return list<string> Validated addresses to pin for the outbound connection.
+     */
+    public function assertSafeUrl(string $url): array
     {
         $parts = parse_url($url);
         if (
@@ -83,7 +129,7 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
             throw new OidcNetworkException('The OIDC endpoint URL is not allowed.');
         }
 
-        $host = (string)$parts['host'];
+        $host = $parts['host'];
         if (!mb_check_encoding($host, 'ASCII')) {
             throw new OidcNetworkException('The OIDC endpoint host is invalid.');
         }
@@ -92,23 +138,30 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
             throw new OidcNetworkException('The OIDC endpoint host could not be resolved.');
         }
         foreach ($addresses as $address) {
-            if (filter_var(
-                $address,
-                FILTER_VALIDATE_IP,
-                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-            ) === false) {
+            if (
+                filter_var(
+                    $address,
+                    FILTER_VALIDATE_IP,
+                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+                ) === false
+            ) {
                 throw new OidcNetworkException('The OIDC endpoint resolves to a prohibited network.');
             }
         }
+
+        return array_values(array_unique($addresses));
     }
 
+    /**
+     * Normalize a URL to a scheme, host, and explicit port origin.
+     */
     private static function origin(string $url): string
     {
         $parts = parse_url($url);
         if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
             return '';
         }
-        $port = $parts['port'] ?? (($parts['scheme'] === 'https') ? 443 : 80);
+        $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
 
         return strtolower($parts['scheme']) . '://' . strtolower($parts['host']) . ':' . $port;
     }

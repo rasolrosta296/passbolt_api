@@ -5,6 +5,9 @@ use Migrations\AbstractMigration;
 
 final class CreateKeycloakSsoTransactions extends AbstractMigration
 {
+    /**
+     * Create the short-lived OIDC transaction table.
+     */
     public function change(): void
     {
         $this->table('keycloak_sso_transactions', [

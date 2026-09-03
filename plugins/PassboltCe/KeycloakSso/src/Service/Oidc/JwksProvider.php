@@ -7,7 +7,7 @@ use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Utility\Http\OidcHttpClientInterface;
 
-final class JwksProvider
+final class JwksProvider implements JwksProviderInterface
 {
     /**
      * @param \Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto $configuration Configuration.
@@ -53,8 +53,12 @@ final class JwksProvider
                 !is_array($key) || ($key['kty'] ?? null) !== 'RSA' ||
                 !isset($key['kid'], $key['n'], $key['e']) ||
                 !is_string($key['kid']) || $key['kid'] === '' || strlen($key['kid']) > 255 ||
-                !is_string($key['n']) || !is_string($key['e']) ||
+                !is_string($key['n']) || !preg_match('/^[A-Za-z0-9_-]{342,2048}$/', $key['n']) ||
+                !is_string($key['e']) || !preg_match('/^[A-Za-z0-9_-]{2,16}$/', $key['e']) ||
                 (($key['use'] ?? 'sig') !== 'sig') || (($key['alg'] ?? 'RS256') !== 'RS256') ||
+                (isset($key['key_ops']) && (
+                    !is_array($key['key_ops']) || !in_array('verify', $key['key_ops'], true)
+                )) ||
                 isset($kids[$key['kid']])
             ) {
                 throw new OidcNetworkException('The OIDC JWKS contains an invalid or duplicate key.');

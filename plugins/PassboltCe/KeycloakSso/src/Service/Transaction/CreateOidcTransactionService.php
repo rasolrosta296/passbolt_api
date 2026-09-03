@@ -14,10 +14,18 @@ final class CreateOidcTransactionService
 {
     use LocatorAwareTrait;
 
-    public function __construct(private readonly TransactionSecretProtector $protector)
-    {
+    /**
+     * Construct the service with authenticated transaction-secret protection.
+     */
+    public function __construct(
+        private readonly TransactionSecretProtector $protector,
+        private readonly ?CleanupOidcTransactionsService $cleanup = null,
+    ) {
     }
 
+    /**
+     * Create a short-lived browser-bound OIDC transaction.
+     */
     public function create(
         string $issuer,
         string $clientId,
@@ -25,6 +33,7 @@ final class CreateOidcTransactionService
         string $configurationHash,
         int $ttlSeconds
     ): CreatedOidcTransaction {
+        ($this->cleanup ?? new CleanupOidcTransactionsService())->run();
         $id = UuidFactory::uuid();
         $state = self::randomBase64Url(32);
         $nonce = self::randomBase64Url(32);
@@ -35,7 +44,7 @@ final class CreateOidcTransactionService
 
         $table = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoTransactions');
         $entity = $table->newEmptyEntity();
-        $entity->set([
+        $fields = [
             'id' => $id,
             'state_hash' => self::hash($state),
             'nonce_hash' => self::hash($nonce),
@@ -47,7 +56,10 @@ final class CreateOidcTransactionService
             'redirect_uri' => $redirectUri,
             'status' => KeycloakSsoTransaction::STATUS_PENDING,
             'expires' => DateTime::now()->addSeconds($ttlSeconds),
-        ]);
+        ];
+        foreach ($fields as $field => $value) {
+            $entity->set($field, $value);
+        }
         if (!$table->save($entity)) {
             throw new OidcTransactionException('The OIDC transaction could not be created.');
         }
@@ -62,16 +74,25 @@ final class CreateOidcTransactionService
         );
     }
 
+    /**
+     * Hash a transaction handle before persistence or comparison.
+     */
     public static function hash(string $value): string
     {
         return hash('sha256', $value);
     }
 
+    /**
+     * Generate an unpadded base64url random value.
+     */
     private static function randomBase64Url(int $bytes): string
     {
         return self::base64Url(random_bytes($bytes));
     }
 
+    /**
+     * Encode bytes as unpadded base64url.
+     */
     private static function base64Url(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');

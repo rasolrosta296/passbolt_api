@@ -79,13 +79,16 @@ final class OidcDiscoveryService
         }
     }
 
+    /**
+     * Validate endpoint origin when a test double replaces the guarded client.
+     */
     private function assertHttpsSameOrigin(string $url): void
     {
         $issuer = parse_url($this->configuration->issuer);
         $endpoint = parse_url($url);
         if (
             $issuer === false || $endpoint === false || ($endpoint['scheme'] ?? null) !== 'https' ||
-            strtolower((string)($issuer['host'] ?? '')) !== strtolower((string)($endpoint['host'] ?? '')) ||
+            strtolower($issuer['host'] ?? '') !== strtolower($endpoint['host'] ?? '') ||
             ($issuer['port'] ?? 443) !== ($endpoint['port'] ?? 443)
         ) {
             throw new OidcNetworkException('The OIDC endpoint origin is not allowed.');

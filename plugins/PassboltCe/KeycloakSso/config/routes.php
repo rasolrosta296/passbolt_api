@@ -11,4 +11,10 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['GET']);
     $routes->connect('/start', ['prefix' => 'Oidc', 'controller' => 'Authorization', 'action' => 'start'])
         ->setMethods(['POST']);
+    $routes->connect('/callback', ['prefix' => 'Oidc', 'controller' => 'Callback', 'action' => 'callback'])
+        ->setMethods(['GET']);
+    $routes->connect('/result', ['prefix' => 'Oidc', 'controller' => 'Result', 'action' => 'result'])
+        ->setMethods(['GET']);
+    $routes->connect('/error', ['prefix' => 'Oidc', 'controller' => 'Result', 'action' => 'failure'])
+        ->setMethods(['GET']);
 });

@@ -9,6 +9,9 @@ use Cake\Validation\Validator;
 
 final class KeycloakSsoTransactionsTable extends Table
 {
+    /**
+     * Configure the transaction table.
+     */
     public function initialize(array $config): void
     {
         parent::initialize($config);
@@ -17,6 +20,9 @@ final class KeycloakSsoTransactionsTable extends Table
         $this->addBehavior('Timestamp');
     }
 
+    /**
+     * Validate transaction persistence fields.
+     */
     public function validationDefault(Validator $validator): Validator
     {
         $validator
@@ -36,11 +42,24 @@ final class KeycloakSsoTransactionsTable extends Table
             ->scalar('pkce_verifier_ciphertext')
             ->requirePresence('pkce_verifier_ciphertext', 'create')
             ->notEmptyString('pkce_verifier_ciphertext')
-            ->scalar('issuer')->maxLength('issuer', 255)->requirePresence('issuer', 'create')->notEmptyString('issuer')
-            ->scalar('client_id')->maxLength('client_id', 255)->requirePresence('client_id', 'create')->notEmptyString('client_id')
-            ->scalar('redirect_uri')->requirePresence('redirect_uri', 'create')->notEmptyString('redirect_uri')
-            ->scalar('status')->maxLength('status', 32)->requirePresence('status', 'create')->notEmptyString('status')
-            ->dateTime('expires')->requirePresence('expires', 'create')->notEmptyDateTime('expires')
+            ->scalar('issuer')
+            ->maxLength('issuer', 255)
+            ->requirePresence('issuer', 'create')
+            ->notEmptyString('issuer')
+            ->scalar('client_id')
+            ->maxLength('client_id', 255)
+            ->requirePresence('client_id', 'create')
+            ->notEmptyString('client_id')
+            ->scalar('redirect_uri')
+            ->requirePresence('redirect_uri', 'create')
+            ->notEmptyString('redirect_uri')
+            ->scalar('status')
+            ->maxLength('status', 32)
+            ->requirePresence('status', 'create')
+            ->notEmptyString('status')
+            ->dateTime('expires')
+            ->requirePresence('expires', 'create')
+            ->notEmptyDateTime('expires')
             ->allowEmptyString('result_token_hash')
             ->allowEmptyString('failure_code')
             ->allowEmptyDateTime('result_expires');
@@ -48,6 +67,9 @@ final class KeycloakSsoTransactionsTable extends Table
         return $validator;
     }
 
+    /**
+     * Enforce unique one-time transaction handles.
+     */
     public function buildRules(RulesChecker $rules): RulesChecker
     {
         $rules->add($rules->isUnique(['state_hash']), ['errorField' => 'state_hash']);

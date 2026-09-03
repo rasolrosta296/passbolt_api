@@ -5,6 +5,9 @@ namespace Passbolt\KeycloakSso\Model\Dto;
 
 final readonly class CreatedOidcTransaction
 {
+    /**
+     * Construct an in-memory transaction containing browser-bound secrets.
+     */
     public function __construct(
         public string $id,
         public string $state,

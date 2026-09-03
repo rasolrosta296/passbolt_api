@@ -4,24 +4,27 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Controller\Oidc;
 
 use App\Controller\AppController;
+use App\Middleware\ContainerInjectorMiddleware;
 use Cake\Event\EventInterface;
-use Cake\Http\Cookie\Cookie;
-use Cake\I18n\DateTime;
-use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
-use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactory;
+use Passbolt\KeycloakSso\Service\Oidc\OidcCookieService;
+use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 
 final class AuthorizationController extends AppController
 {
-    public const BROWSER_BINDING_COOKIE = '__Host-passbolt_keycloak_binding';
-
+    /**
+     * @inheritDoc
+     */
     public function beforeFilter(EventInterface $event)
     {
         $this->Authentication->allowUnauthenticated(['index', 'start']);
 
-        return parent::beforeFilter($event);
+        parent::beforeFilter($event);
     }
 
+    /**
+     * Render the CSRF-protected login initiation form.
+     */
     public function index(): void
     {
         $this->viewBuilder()
@@ -30,18 +33,32 @@ final class AuthorizationController extends AppController
             ->setTemplate('index');
     }
 
+    /**
+     * Create a browser-bound transaction and redirect to the trusted provider.
+     */
     public function start(): ResponseInterface
     {
-        $request = (new OidcServiceFactory())->authorizationRequest()->create();
-        $cookie = (new Cookie(self::BROWSER_BINDING_COOKIE))
-            ->withValue($request->browserBinding)
-            ->withPath('/')
-            ->withSecure(true)
-            ->withHttpOnly(true)
-            ->withSameSite(Cookie::SAMESITE_LAX)
-            ->withExpiry(DateTime::now()->addSeconds(OidcConfigurationDto::TRANSACTION_TTL_SECONDS));
-        $this->setResponse($this->getResponse()->withCookie($cookie));
+        $request = $this->serviceFactory()->authorizationRequest()->create();
+        $cookie = OidcCookieService::browserBinding($request->browserBinding);
+        $this->setResponse(
+            $this->getResponse()
+                ->withCookie($cookie)
+                ->withHeader('Cache-Control', 'no-store')
+                ->withHeader('Pragma', 'no-cache')
+        );
+        $this->redirect($request->url, 303);
 
-        return $this->redirect($request->url, 303);
+        return $this->getResponse();
+    }
+
+    /**
+     * Resolve the plugin's isolated service factory.
+     */
+    private function serviceFactory(): OidcServiceFactoryInterface
+    {
+        /** @var \Cake\Core\ContainerInterface $container */
+        $container = $this->getRequest()->getAttribute(ContainerInjectorMiddleware::CONTAINER_ATTRIBUTE);
+
+        return $container->get(OidcServiceFactoryInterface::class);
     }
 }

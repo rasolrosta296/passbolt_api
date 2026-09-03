@@ -6,13 +6,15 @@ namespace Passbolt\KeycloakSso\Configuration;
 use Cake\Core\Configure;
 use Passbolt\KeycloakSso\Error\Exception\OidcConfigurationException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use SensitiveParameter;
 
 final class OidcConfigurationService
 {
     /**
      * @param array<string, string|false>|null $environment Test override; production reads process environment.
      */
-    public function load(?array $environment = null): OidcConfigurationDto
+    public function load(#[SensitiveParameter]
+    ?array $environment = null): OidcConfigurationDto
     {
         $read = static function (string $name) use ($environment): string|false {
             return $environment === null ? getenv($name) : ($environment[$name] ?? false);
@@ -43,7 +45,10 @@ final class OidcConfigurationService
         $this->assertClientId($clientId);
         $this->assertRedirectUri($redirectUri);
         $encryptionKey = base64_decode($encodedEncryptionKey, true);
-        if ($encryptionKey === false || strlen($encryptionKey) !== 32) {
+        if (
+            $encryptionKey === false || strlen($encryptionKey) !== 32 ||
+            !hash_equals(base64_encode($encryptionKey), $encodedEncryptionKey)
+        ) {
             throw new OidcConfigurationException(
                 KeycloakSsoEnvironment::TRANSACTION_ENCRYPTION_KEY . ' must be base64 encoding of exactly 32 bytes.'
             );
@@ -52,29 +57,43 @@ final class OidcConfigurationService
         return new OidcConfigurationDto($issuer, $clientId, $clientSecret, $redirectUri, $encryptionKey);
     }
 
+    /**
+     * Read a required whitespace-free environment value.
+     */
     private function required(string|false $value, string $name): string
     {
-        if (!is_string($value) || $value === '' || trim($value) !== $value || preg_match('/[\x00-\x1F\x7F]/', $value)) {
+        if (
+            !is_string($value) || $value === '' || trim($value) !== $value ||
+            preg_match('/[\x00-\x1F\x7F]/', $value)
+        ) {
             throw new OidcConfigurationException($name . ' is required and must not contain whitespace or controls.');
         }
 
         return $value;
     }
 
+    /**
+     * Enforce the exact HTTPS Keycloak realm issuer shape.
+     */
     private function assertIssuer(string $issuer): void
     {
         $parts = parse_url($issuer);
+        $path = is_array($parts) ? ($parts['path'] ?? '') : '';
         if (
             $parts === false || ($parts['scheme'] ?? null) !== 'https' || empty($parts['host']) ||
             isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) ||
-            str_ends_with($issuer, '/') || !str_contains($parts['path'] ?? '', '/realms/')
+            !preg_match('#^/realms/[A-Za-z0-9._~-]+$#D', $path)
         ) {
             throw new OidcConfigurationException(
-                KeycloakSsoEnvironment::ISSUER . ' must be an exact HTTPS Keycloak realm issuer without a trailing slash.'
+                KeycloakSsoEnvironment::ISSUER .
+                ' must be an exact HTTPS Keycloak realm issuer without a trailing slash.'
             );
         }
     }
 
+    /**
+     * Enforce the client identifier size bound.
+     */
     private function assertClientId(string $clientId): void
     {
         if (strlen($clientId) > 255) {
@@ -82,6 +101,9 @@ final class OidcConfigurationService
         }
     }
 
+    /**
+     * Enforce the fixed HTTPS callback and, when enabled, the public Passbolt URL.
+     */
     private function assertRedirectUri(string $redirectUri): void
     {
         $parts = parse_url($redirectUri);

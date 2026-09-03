@@ -43,6 +43,9 @@ final class KeycloakSsoTransaction extends Entity
         'result_token_hash',
     ];
 
+    /**
+     * Return whether the transaction has expired.
+     */
     public function isExpired(?DateTime $now = null): bool
     {
         return $this->expires <= ($now ?? DateTime::now());

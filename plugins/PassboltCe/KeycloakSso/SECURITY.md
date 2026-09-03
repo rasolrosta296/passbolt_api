@@ -27,12 +27,18 @@ same verified email address. It must not:
   binding, plus an authenticated-encrypted PKCE verifier.
 - Atomic `pending` to `processing` claim and terminal consumption on success or
   failure.
+- Expired or abandoned transaction material is opportunistically erased when a
+  new transaction starts and can also be erased by scheduling the plugin's
+  `keycloak_sso_transactions_cleanup` command.
 - Discovery/JWKS requests reject redirects, untrusted origins, unsafe IP
-  destinations, invalid TLS, and oversized responses.
+  destinations, invalid TLS, and oversized responses. Validated DNS results are
+  pinned into the cURL connection to prevent DNS rebinding between validation
+  and connection.
 - ID tokens require an allowed asymmetric algorithm, trusted JWKS signature,
   exact issuer, audience, applicable `azp`, `exp`, bounded `iat`, optional `nbf`,
   exact nonce, `sub`, valid email, and literal boolean `email_verified=true`.
-- Token-provided `jku` and `x5u` are ignored.
+- Token-provided `jku`, `x5u`, `jwk`, `x5c`, and unsupported critical headers
+  are rejected. Signing keys come only from the discovered trusted JWKS URI.
 - The callback redirects with HTTP 303 to a fixed, one-time result endpoint.
 
 ## Sensitive-data handling
@@ -40,6 +46,12 @@ same verified email address. It must not:
 Authorization codes, access/refresh/ID tokens, claims, client secrets, PKCE
 verifiers, raw state/nonces/browser bindings, encryption keys, private keys, and
 passphrases must never be logged or included in responses.
+
+Because Authorization Code Flow uses the required GET/query callback, the
+Kubernetes ingress, reverse proxy, service mesh, APM, WAF, and load balancer
+must be configured not to log query strings for `/auth/keycloak/callback`.
+Application-level audit events intentionally contain only fixed messages and
+allowlisted failure categories.
 
 ## Deferred work
 

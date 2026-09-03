@@ -34,11 +34,17 @@ final class OidcMetadataCache
         ], 'default');
     }
 
+    /**
+     * Delete cached metadata.
+     */
     public function delete(string $type, string $configurationHash): void
     {
         Cache::delete($this->key($type, $configurationHash), 'default');
     }
 
+    /**
+     * Build a configuration-bound cache key.
+     */
     private function key(string $type, string $configurationHash): string
     {
         return 'keycloak_sso_' . $type . '_' . $configurationHash;
