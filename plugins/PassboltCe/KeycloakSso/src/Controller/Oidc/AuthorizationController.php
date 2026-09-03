@@ -27,6 +27,7 @@ final class AuthorizationController extends AppController
      */
     public function index(): void
     {
+        $this->set('csrfToken', (string)$this->getRequest()->getAttribute('csrfToken'));
         $this->viewBuilder()
             ->setLayout('default')
             ->setTemplatePath('Oidc/Authorization')

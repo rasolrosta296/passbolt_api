@@ -1,6 +1,5 @@
 <?php
-/** @var \App\View\AppView $this */
-$csrfToken = (string)$this->getRequest()->getAttribute('csrfToken');
+/** @var string $csrfToken */
 ?>
 <main class="page login">
     <h1><?= h(__('Login with Keycloak')) ?></h1>
