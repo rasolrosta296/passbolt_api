@@ -35,7 +35,11 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['POST']);
     $routes->connect('/crypto/release', ['controller' => 'CryptoSso', 'action' => 'release'])
         ->setMethods(['POST']);
-    $routes->connect('/crypto/enrollments/revoke', ['controller' => 'CryptoSso', 'action' => 'revokeEnrollments'])
+    $routes->connect('/crypto/rotation/start', ['controller' => 'CryptoSso', 'action' => 'startRotation'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/rotation/complete', ['controller' => 'CryptoSso', 'action' => 'completeRotation'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/rotation/fail', ['controller' => 'CryptoSso', 'action' => 'failRotation'])
         ->setMethods(['POST']);
     $routes->connect('/crypto/complete', ['controller' => 'CryptoSso', 'action' => 'complete'])
         ->setMethods(['GET']);

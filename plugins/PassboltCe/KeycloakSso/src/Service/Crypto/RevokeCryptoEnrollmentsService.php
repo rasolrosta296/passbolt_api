@@ -60,13 +60,13 @@ final class RevokeCryptoEnrollmentsService
                     $activeEnrollmentIds[] = $enrollmentId;
                 }
             }
-            if ($enrollmentIds === []) {
-                return [];
-            }
-
             $requestRows = $requests->find()->select(['id'])->where([
-                'enrollment_id IN' => $enrollmentIds,
-                'purpose' => KeycloakSsoCryptoRequest::PURPOSE_RELEASE,
+                'identity_id IN' => $identityIds,
+                'user_id' => $userId,
+                'purpose IN' => [
+                    KeycloakSsoCryptoRequest::PURPOSE_ENROLLMENT,
+                    KeycloakSsoCryptoRequest::PURPOSE_RELEASE,
+                ],
                 'status IN' => [
                     KeycloakSsoCryptoRequest::STATUS_PENDING_OIDC,
                     KeycloakSsoCryptoRequest::STATUS_OIDC_VERIFIED,

@@ -5,6 +5,8 @@ namespace Passbolt\KeycloakSso;
 
 use Cake\Core\BasePlugin;
 use Cake\Core\ContainerInterface;
+use Cake\Core\PluginApplicationInterface;
+use Passbolt\KeycloakSso\Event\RevokeCryptoEnrollmentsOnGpgkeyChange;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactory;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactoryInterface;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactory;
@@ -14,6 +16,13 @@ use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
 
 final class KeycloakSsoPlugin extends BasePlugin
 {
+    /** @inheritDoc */
+    public function bootstrap(PluginApplicationInterface $app): void
+    {
+        parent::bootstrap($app);
+        $app->getEventManager()->on(new RevokeCryptoEnrollmentsOnGpgkeyChange());
+    }
+
     /**
      * Register the plugin's isolated service factory.
      */

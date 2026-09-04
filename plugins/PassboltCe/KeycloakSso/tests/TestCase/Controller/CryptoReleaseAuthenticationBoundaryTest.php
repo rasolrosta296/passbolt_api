@@ -5,6 +5,7 @@ namespace Passbolt\KeycloakSso\Test\TestCase\Controller;
 
 use App\Model\Entity\User;
 use App\Test\Factory\AuthenticationTokenFactory;
+use App\Test\Factory\GpgkeyFactory;
 use App\Test\Factory\UserFactory;
 use App\Utility\UuidFactory;
 use Cake\I18n\DateTime;
@@ -29,6 +30,7 @@ use Passbolt\KeycloakSso\Service\Crypto\CryptoOidcProofService;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoReleaseService;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoResultClaimService;
 use Passbolt\KeycloakSso\Service\Crypto\RevokeCryptoEnrollmentsService;
+use Passbolt\KeycloakSso\Service\Crypto\RotationBarrierService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
@@ -39,6 +41,8 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
 {
     public function testSuccessfulOidcAndServerShareReleaseStillDoNotAuthenticatePassbolt(): void
     {
+        // Direct service calls do not bootstrap an HTTP session; discard state left by earlier integration requests.
+        $_SESSION = [];
         $tokenCount = AuthenticationTokenFactory::count();
         $fixture = $this->releaseFixture();
 
@@ -85,6 +89,8 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
     {
         $user = UserFactory::make(['username' => 'user@example.com'])->user()->active()->notDisabled()->persist();
         self::assertInstanceOf(User::class, $user);
+        /** @var \App\Model\Entity\Gpgkey $gpgkey */
+        $gpgkey = GpgkeyFactory::make()->withAdaKey()->setField('user_id', $user->id)->persist();
         $oidc = new OidcConfigurationDto(
             'https://keyclock.gobaz.ir/realms/passbolt',
             'passbolt',
@@ -116,7 +122,7 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
             'identity_uuid' => $identity->id,
             'enrollment_uuid' => $enrollmentId,
             'client_enrollment_uuid' => $clientEnrollmentId,
-            'openpgp_fingerprint' => '0123456789ABCDEF0123456789ABCDEF01234567',
+            'openpgp_fingerprint' => $gpgkey->fingerprint,
             'enrollment_public_key_thumbprint' => $public['thumbprint'],
         ];
         $serverShare = random_bytes(32);
@@ -211,7 +217,8 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
                 $requestProtector,
                 $shareProtector,
                 new HpkeReleaseService(),
-                new ProfileSigningKeyVerifier()
+                new ProfileSigningKeyVerifier(),
+                new RotationBarrierService($requestProtector, new RevokeCryptoEnrollmentsService())
             ),
             'token' => $token,
             'request_id' => $requestId,

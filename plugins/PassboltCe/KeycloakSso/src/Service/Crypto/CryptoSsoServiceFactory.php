@@ -37,7 +37,8 @@ final class CryptoSsoServiceFactory implements CryptoSsoServiceFactoryInterface
             new OidcDiscoveryService($oidc, new SafeOidcHttpClient($oidc), new OidcMetadataCache()),
             new CreateOidcTransactionService($protector),
             $protector,
-            new ProfileSigningKeyVerifier()
+            new ProfileSigningKeyVerifier(),
+            $this->rotationBarrier()
         );
     }
 
@@ -53,7 +54,8 @@ final class CryptoSsoServiceFactory implements CryptoSsoServiceFactoryInterface
             new CryptoResultClaimService(),
             new ProfileSigningKeyVerifier(),
             new OpenPgpEnrollmentProofVerifier(),
-            new ServerShareProtector($crypto)
+            new ServerShareProtector($crypto),
+            $this->rotationBarrier()
         );
     }
 
@@ -67,16 +69,18 @@ final class CryptoSsoServiceFactory implements CryptoSsoServiceFactoryInterface
             $this->transactionProtector(),
             new ServerShareProtector($this->crypto()),
             new HpkeReleaseService(),
-            new ProfileSigningKeyVerifier()
+            new ProfileSigningKeyVerifier(),
+            $this->rotationBarrier()
         );
     }
 
-    /**
-     * Build current-user enrollment revocation across every linked issuer.
-     */
-    public function revocation(): RevokeCryptoEnrollmentsService
+    /** Build the server-authoritative passphrase-rotation barrier. */
+    public function rotationBarrier(): RotationBarrierService
     {
-        return new RevokeCryptoEnrollmentsService();
+        return new RotationBarrierService(
+            $this->transactionProtector(),
+            new RevokeCryptoEnrollmentsService()
+        );
     }
 
     /**

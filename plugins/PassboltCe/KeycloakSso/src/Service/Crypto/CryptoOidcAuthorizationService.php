@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Service\Crypto;
 
 use App\Utility\UuidFactory;
+use Cake\Datasource\ConnectionManager;
 use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
 use Cake\Validation\Validation;
@@ -36,6 +37,7 @@ final class CryptoOidcAuthorizationService
         private readonly CreateOidcTransactionService $transactions,
         private readonly TransactionSecretProtector $protector,
         private readonly ProfileSigningKeyVerifier $signatures,
+        private readonly RotationBarrierService $rotationBarrier,
     ) {
     }
 
@@ -44,24 +46,37 @@ final class CryptoOidcAuthorizationService
      */
     public function startEnrollment(string $userId): CryptoAuthorizationRequest
     {
-        $identity = $this->activeIdentityForUser($userId);
-        $enrollmentId = UuidFactory::uuid();
-        $request = $this->createRequest(
-            KeycloakSsoCryptoRequest::PURPOSE_ENROLLMENT,
-            $userId,
-            (string)$identity->get('id'),
-            $enrollmentId,
-            null,
-            null
-        );
+        $this->rotationBarrier->assertInactive($userId);
+        $authorizationEndpoint = $this->discovery->get()->authorizationEndpoint;
+        /** @var \Cake\Database\Connection $connection */
+        $connection = ConnectionManager::get('default');
 
-        return $this->createAuthorization(
-            $request->id,
+        return $connection->transactional(function () use (
             $userId,
-            $enrollmentId,
-            (string)$identity->get('id'),
-            KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT
-        );
+            $authorizationEndpoint
+        ): CryptoAuthorizationRequest {
+            $this->rotationBarrier->lockActiveUser($userId);
+            $this->rotationBarrier->assertInactive($userId);
+            $identity = $this->activeIdentityForUser($userId);
+            $enrollmentId = UuidFactory::uuid();
+            $request = $this->createRequest(
+                KeycloakSsoCryptoRequest::PURPOSE_ENROLLMENT,
+                $userId,
+                (string)$identity->get('id'),
+                $enrollmentId,
+                null,
+                null
+            );
+
+            return $this->createAuthorization(
+                $request->id,
+                $userId,
+                $enrollmentId,
+                (string)$identity->get('id'),
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+                $authorizationEndpoint
+            );
+        });
     }
 
     /** @param array<string, mixed> $input */
@@ -75,14 +90,60 @@ final class CryptoOidcAuthorizationService
         $recipient = $this->canonicalBase64($input, 'hpke_recipient_public_key', 128, 65);
         $signature = $this->requiredString($input, 'signature', 128);
         $clientBlobDigest = $this->requiredHex($input, 'client_blob_digest', 64);
-
         $table = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoCryptoEnrollments');
-        /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoEnrollment|null $enrollment */
-        $enrollment = $table->find()->where([
+        /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoEnrollment|null $candidate */
+        $candidate = $table->find()->where([
             'id' => $enrollmentId,
             'status' => KeycloakSsoCryptoEnrollment::STATUS_ACTIVE,
             'revoked IS' => null,
         ])->first();
+        if ($candidate === null) {
+            throw new CryptoSsoException('enrollment_unavailable');
+        }
+        $this->rotationBarrier->assertInactive((string)$candidate->get('user_id'));
+        $authorizationEndpoint = $this->discovery->get()->authorizationEndpoint;
+
+        /** @var \Cake\Database\Connection $connection */
+        $connection = ConnectionManager::get('default');
+
+        return $connection->transactional(fn (): CryptoAuthorizationRequest => $this->startReleaseLocked(
+            (string)$candidate->get('user_id'),
+            $enrollmentId,
+            $contextBytes,
+            $context,
+            $clientNonce,
+            $recipient,
+            $signature,
+            $clientBlobDigest,
+            $authorizationEndpoint
+        ));
+    }
+
+    /**
+     * Create a release request while serialized against passphrase rotation.
+     *
+     * @param array<string, string> $context
+     */
+    private function startReleaseLocked(
+        string $userId,
+        string $enrollmentId,
+        string $contextBytes,
+        array $context,
+        string $clientNonce,
+        string $recipient,
+        string $signature,
+        string $clientBlobDigest,
+        string $authorizationEndpoint
+    ): CryptoAuthorizationRequest {
+        $this->rotationBarrier->lockActiveUser($userId);
+        $this->rotationBarrier->assertInactive($userId);
+        /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoEnrollment|null $enrollment */
+        $enrollment = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoCryptoEnrollments')->find()->where([
+            'id' => $enrollmentId,
+            'user_id' => $userId,
+            'status' => KeycloakSsoCryptoEnrollment::STATUS_ACTIVE,
+            'revoked IS' => null,
+        ])->epilog('FOR UPDATE')->first();
         if ($enrollment === null) {
             throw new CryptoSsoException('enrollment_unavailable');
         }
@@ -94,7 +155,12 @@ final class CryptoOidcAuthorizationService
         $user = $this->fetchTable('Users')->find('activeNotDeletedNotDisabledContainRole')->where([
             'Users.id' => $enrollment->get('user_id'),
         ])->first();
-        if ($identity === null || $user === null) {
+        $currentGpgkey = $this->fetchTable('Gpgkeys')->find()->where([
+            'user_id' => $enrollment->get('user_id'),
+            'fingerprint' => $enrollment->get('passbolt_key_fingerprint'),
+            'deleted' => false,
+        ])->first();
+        if ($identity === null || $user === null || $currentGpgkey === null) {
             throw new CryptoSsoException('enrollment_owner_unavailable');
         }
         if (
@@ -133,7 +199,8 @@ final class CryptoOidcAuthorizationService
             (string)$enrollment->get('user_id'),
             $enrollmentId,
             (string)$enrollment->get('identity_id'),
-            KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE
+            KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
+            $authorizationEndpoint
         );
     }
 
@@ -145,7 +212,8 @@ final class CryptoOidcAuthorizationService
         string $userId,
         string $enrollmentId,
         string $identityId,
-        string $purpose
+        string $purpose,
+        string $authorizationEndpoint
     ): CryptoAuthorizationRequest {
         $created = $this->transactions->create(
             $this->oidc->issuer,
@@ -157,8 +225,7 @@ final class CryptoOidcAuthorizationService
             $userId,
             $requestId
         );
-        $endpoint = $this->discovery->get()->authorizationEndpoint;
-        $url = AuthorizationRequestService::buildAuthorizationUrl($this->oidc, $endpoint, $created, [
+        $url = AuthorizationRequestService::buildAuthorizationUrl($this->oidc, $authorizationEndpoint, $created, [
             'prompt' => 'login',
             'max_age' => '0',
             'claims' => json_encode([

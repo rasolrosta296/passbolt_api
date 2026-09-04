@@ -32,6 +32,7 @@ final class CryptoReleaseService
         private readonly ServerShareProtector $shares,
         private readonly HpkeReleaseService $hpke,
         private readonly ProfileSigningKeyVerifier $profileSignatures,
+        private readonly RotationBarrierService $rotationBarrier,
     ) {
     }
 
@@ -68,6 +69,8 @@ final class CryptoReleaseService
         KeycloakSsoCryptoRequest $request,
         array $input
     ): array {
+        $this->rotationBarrier->lockActiveUser($request->user_id);
+        $this->rotationBarrier->assertInactive($request->user_id);
         /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoIdentity|null $identity */
         $identity = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoIdentities')->find()->where([
             'id' => $request->identity_id,
@@ -82,10 +85,15 @@ final class CryptoReleaseService
             'status' => KeycloakSsoCryptoEnrollment::STATUS_ACTIVE,
             'revoked IS' => null,
         ])->epilog('FOR UPDATE')->first();
-        $user = $this->fetchTable('Users')->find('activeNotDeletedNotDisabledContainRole')->where([
-            'Users.id' => $request->user_id,
+        if ($enrollment === null || $identity === null) {
+            throw new CryptoSsoException('release_owner_unavailable');
+        }
+        $currentGpgkey = $this->fetchTable('Gpgkeys')->find()->where([
+            'user_id' => $enrollment->get('user_id'),
+            'fingerprint' => $enrollment->get('passbolt_key_fingerprint'),
+            'deleted' => false,
         ])->first();
-        if ($enrollment === null || $identity === null || $user === null) {
+        if ($currentGpgkey === null) {
             throw new CryptoSsoException('release_owner_unavailable');
         }
         $contextBytes = base64_decode((string)$enrollment->get('context_cbor'), true);

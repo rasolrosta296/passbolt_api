@@ -16,6 +16,7 @@ final class CryptoSsoAuditService
             'enrollment_started', 'enrollment_succeeded', 'enrollment_failed',
             'release_started', 'release_succeeded', 'release_failed',
             'enrollment_revoked', 'enrollment_revocation_failed',
+            'rotation_barrier_started', 'rotation_barrier_completed', 'rotation_barrier_failed',
         ];
         $allowedCategories = [
             'none', 'authentication', 'identity', 'protocol', 'freshness', 'cryptography',

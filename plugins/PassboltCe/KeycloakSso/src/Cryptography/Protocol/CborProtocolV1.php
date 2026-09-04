@@ -56,9 +56,9 @@ final class CborProtocolV1
         }
         self::assertOrigin($context['passbolt_origin']);
         foreach (['user_uuid', 'identity_uuid', 'enrollment_uuid', 'client_enrollment_uuid'] as $field) {
-            $uuidV4 = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D';
-            if (preg_match($uuidV4, $context[$field]) !== 1) {
-                throw new InvalidArgumentException(sprintf('%s must be a canonical lowercase UUIDv4.', $field));
+            $uuid = '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D';
+            if (preg_match($uuid, $context[$field]) !== 1) {
+                throw new InvalidArgumentException(sprintf('%s must be a canonical lowercase UUID.', $field));
             }
         }
         if (preg_match('/^[0-9A-F]{40}$/D', $context['openpgp_fingerprint']) !== 1) {

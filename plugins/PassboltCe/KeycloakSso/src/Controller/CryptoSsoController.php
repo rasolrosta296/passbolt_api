@@ -120,25 +120,37 @@ final class CryptoSsoController extends AppController
         }
     }
 
-    /**
-     * Revoke every cryptographic enrollment owned by the authenticated user.
-     */
-    public function revokeEnrollments(): void
+    /** Activate the passphrase-rotation barrier and revoke all enrollment state. */
+    public function startRotation(): void
     {
         $userId = $this->activeUserId();
         $audit = new CryptoSsoAuditService();
         try {
-            $clientEnrollmentIds = $this->factory()->revocation()->revokeAllForUser($userId);
+            $result = $this->factory()->rotationBarrier()->begin($userId);
             $this->noStore();
             $audit->record('enrollment_revoked', $userId, 'revoked');
-            $this->success(__('The cryptographic SSO enrollments were revoked.'), [
-                'client_enrollment_uuids' => $clientEnrollmentIds,
+            $audit->record('rotation_barrier_started', $userId);
+            $this->success(__('The cryptographic SSO passphrase-rotation barrier is active.'), [
+                'rotation_capability' => $result['capability'],
+                'client_enrollment_uuids' => $result['clientEnrollmentUuids'],
             ]);
         } catch (Throwable $exception) {
             $this->noStore();
             $audit->record('enrollment_revocation_failed', $userId, $this->category($exception));
             throw $exception;
         }
+    }
+
+    /** Mark a locally completed credential rotation and remove the enrollment block. */
+    public function completeRotation(): void
+    {
+        $this->finishRotation('completed', 'rotation_barrier_completed');
+    }
+
+    /** Mark a failed credential rotation without restoring any revoked enrollment. */
+    public function failRotation(): void
+    {
+        $this->finishRotation('failed', 'rotation_barrier_failed');
     }
 
     /**
@@ -191,6 +203,27 @@ final class CryptoSsoController extends AppController
             ->withHeader('Cache-Control', 'no-store')
             ->withHeader('Pragma', 'no-cache');
         $this->setResponse($response);
+    }
+
+    /** Finish a capability-bound rotation barrier for the current user. */
+    private function finishRotation(string $outcome, string $auditEvent): void
+    {
+        $userId = $this->activeUserId();
+        $audit = new CryptoSsoAuditService();
+        try {
+            $capability = $this->getRequest()->getData('rotation_capability');
+            if (!is_string($capability)) {
+                throw new BadRequestException(__('The passphrase-rotation capability is invalid.'));
+            }
+            $this->factory()->rotationBarrier()->finish($capability, $userId, $outcome);
+            $this->noStore();
+            $audit->record($auditEvent, $userId);
+            $this->success(__('The cryptographic SSO passphrase-rotation barrier was finalized.'));
+        } catch (Throwable $exception) {
+            $this->noStore();
+            $audit->record($auditEvent, $userId, $this->category($exception));
+            $this->error(__('The cryptographic SSO passphrase-rotation barrier could not be finalized.'));
+        }
     }
 
     /**

@@ -39,25 +39,40 @@ final class CryptoEnrollmentRevocationControllerTest extends KeycloakSsoIntegrat
         parent::tearDown();
     }
 
-    public function testAuthenticatedUserCanIdempotentlyRevokeWhenNoEnrollmentExists(): void
+    public function testAuthenticatedUserCanIdempotentlyStartAndCompleteRotationBarrier(): void
     {
         $user = UserFactory::make()->user()->active()->notDisabled()->persist();
         self::assertInstanceOf(User::class, $user);
         $this->logInAs($user);
 
-        $this->postJson('/auth/keycloak/crypto/enrollments/revoke.json');
+        $this->postJson('/auth/keycloak/crypto/rotation/start.json');
 
         $this->assertResponseOk();
+        $capability = $this->_responseJsonBody->rotation_capability;
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/D', $capability);
         $this->assertSame([], (array)$this->_responseJsonBody->client_enrollment_uuids);
         $this->assertSame('no-store', $this->_response->getHeaderLine('Cache-Control'));
         $this->assertSame('no-cache', $this->_response->getHeaderLine('Pragma'));
+
+        $this->postJson('/auth/keycloak/crypto/rotation/start.json');
+        $this->assertResponseOk();
+        $this->assertSame($capability, $this->_responseJsonBody->rotation_capability);
+
+        $this->postJson('/auth/keycloak/crypto/rotation/complete.json', [
+            'rotation_capability' => $capability,
+        ]);
+        $this->assertResponseOk();
+        $this->postJson('/auth/keycloak/crypto/rotation/complete.json', [
+            'rotation_capability' => $capability,
+        ]);
+        $this->assertResponseOk();
     }
 
     public function testRevocationRequiresAuthenticatedPassboltSession(): void
     {
-        $this->postJson('/auth/keycloak/crypto/enrollments/revoke.json');
+        $this->postJson('/auth/keycloak/crypto/rotation/start.json');
 
-        $this->assertResponseCode(302);
+        $this->assertResponseCode(401);
     }
 
     public function testRevocationRequiresCsrfEvenWithAuthenticatedSession(): void
@@ -67,8 +82,32 @@ final class CryptoEnrollmentRevocationControllerTest extends KeycloakSsoIntegrat
         $this->logInAs($user);
         $this->disableCsrfToken();
 
-        $this->postJson('/auth/keycloak/crypto/enrollments/revoke.json');
+        $this->postJson('/auth/keycloak/crypto/rotation/start.json');
 
         $this->assertResponseCode(403);
+    }
+
+    public function testBarrierCompletionRequiresCsrfAndExactCapability(): void
+    {
+        $user = UserFactory::make()->user()->active()->notDisabled()->persist();
+        self::assertInstanceOf(User::class, $user);
+        $this->logInAs($user);
+        $this->postJson('/auth/keycloak/crypto/rotation/start.json');
+        $this->assertResponseOk();
+        $capability = $this->_responseJsonBody->rotation_capability;
+
+        $this->disableCsrfToken();
+        $this->postJson('/auth/keycloak/crypto/rotation/complete.json', [
+            'rotation_capability' => $capability,
+        ]);
+        $this->assertResponseCode(403);
+
+        $this->enableCsrfToken();
+        $this->postJson('/auth/keycloak/crypto/rotation/complete.json', [
+            'rotation_capability' => str_repeat('x', 43),
+        ]);
+        $this->assertResponseCode(400);
+        $this->assertSame('no-store', $this->_response->getHeaderLine('Cache-Control'));
+        $this->assertStringNotContainsString($capability, (string)$this->_response->getBody());
     }
 }

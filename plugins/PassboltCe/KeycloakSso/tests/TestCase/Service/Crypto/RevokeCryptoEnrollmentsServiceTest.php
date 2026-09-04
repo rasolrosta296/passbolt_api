@@ -4,12 +4,15 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Test\TestCase\Service\Crypto;
 
 use App\Model\Entity\User;
+use App\Test\Factory\GpgkeyFactory;
 use App\Test\Factory\UserFactory;
 use App\Utility\UuidFactory;
+use Cake\Event\Event;
 use Cake\I18n\DateTime;
 use Cake\ORM\Table;
 use Cake\ORM\TableRegistry;
 use Passbolt\KeycloakSso\Cryptography\Protocol\CborProtocolV1;
+use Passbolt\KeycloakSso\Event\RevokeCryptoEnrollmentsOnGpgkeyChange;
 use Passbolt\KeycloakSso\Model\Dto\PendingIdentityLink;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoEnrollment;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoRequest;
@@ -80,12 +83,33 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
         $this->assertNotSame($owner->id, $other->id);
     }
 
+    public function testGpgkeyChangeListenerRevokesOldFingerprintEnrollment(): void
+    {
+        [$user, , $enrollmentId] = $this->enrollmentFixture(true);
+        $gpgkeys = TableRegistry::getTableLocator()->get('Gpgkeys');
+        $gpgkey = $gpgkeys->find()->where(['user_id' => $user->id, 'deleted' => false])->firstOrFail();
+        $gpgkey->set('armored_key', (string)$gpgkey->get('armored_key') . "\n");
+
+        (new RevokeCryptoEnrollmentsOnGpgkeyChange())->revoke(new Event(
+            'Model.afterSave',
+            $gpgkeys,
+            ['entity' => $gpgkey]
+        ));
+
+        $enrollment = $this->enrollments()->get($enrollmentId);
+        $this->assertSame(KeycloakSsoCryptoEnrollment::STATUS_REVOKED, $enrollment->get('status'));
+        $this->assertSame('revoked', $enrollment->get('server_share_key_id'));
+    }
+
     /** @return array{0: User, 1: string, 2: string, 3: string} */
-    private function enrollmentFixture(): array
+    private function enrollmentFixture(bool $withGpgkey = false): array
     {
         $user = UserFactory::make(['username' => UuidFactory::uuid() . '@example.com'])
             ->user()->active()->notDisabled()->persist();
         self::assertInstanceOf(User::class, $user);
+        if ($withGpgkey) {
+            GpgkeyFactory::make()->withAdaKey()->setField('user_id', $user->id)->persist();
+        }
         $identity = (new IdentityLinkPersistenceService())->create($user->id, new PendingIdentityLink(
             self::ISSUER,
             UuidFactory::uuid(),

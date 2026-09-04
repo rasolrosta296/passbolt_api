@@ -29,6 +29,7 @@ final class CryptoEnrollmentService
         private readonly ProfileSigningKeyVerifier $profileSignatures,
         private readonly OpenPgpEnrollmentProofVerifier $openPgpProofs,
         private readonly ServerShareProtector $shares,
+        private readonly RotationBarrierService $rotationBarrier,
     ) {
     }
 
@@ -69,17 +70,6 @@ final class CryptoEnrollmentService
             ) {
                 throw new CryptoSsoException('enrollment_context_mismatch');
             }
-            $identity = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoIdentities')->find()->where([
-                'id' => $request->identity_id,
-                'user_id' => $authenticatedUserId,
-                'issuer' => $transaction->issuer,
-            ])->first();
-            $user = $this->fetchTable('Users')->find('activeNotDeletedNotDisabledContainRole')->where([
-                'Users.id' => $authenticatedUserId,
-            ])->first();
-            if ($identity === null || $user === null) {
-                throw new CryptoSsoException('enrollment_owner_unavailable');
-            }
             $shareDigest = hash('sha256', $serverShare);
             $transcript = CborProtocolV1::encodeEnrollmentTranscript($context, $clientBlobDigest, $shareDigest);
             $this->openPgpProofs->verify($authenticatedUserId, $fingerprint, $transcript, $openPgpSignature);
@@ -112,7 +102,23 @@ final class CryptoEnrollmentService
             }
             /** @var \Cake\Database\Connection $connection */
             $connection = ConnectionManager::get('default');
-            $connection->transactional(function () use ($table, $entity, $transaction, $request): void {
+            $connection->transactional(function () use (
+                $table,
+                $entity,
+                $transaction,
+                $request,
+                $authenticatedUserId
+            ): void {
+                $this->rotationBarrier->lockActiveUser($authenticatedUserId);
+                $identity = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoIdentities')->find()->where([
+                    'id' => $request->identity_id,
+                    'user_id' => $authenticatedUserId,
+                    'issuer' => $transaction->issuer,
+                ])->epilog('FOR UPDATE')->first();
+                if ($identity === null) {
+                    throw new CryptoSsoException('enrollment_owner_unavailable');
+                }
+                $this->rotationBarrier->assertInactive($authenticatedUserId);
                 if (!$table->save($entity) || !($entity instanceof KeycloakSsoCryptoEnrollment)) {
                     throw new CryptoSsoException('enrollment_persistence_failed');
                 }

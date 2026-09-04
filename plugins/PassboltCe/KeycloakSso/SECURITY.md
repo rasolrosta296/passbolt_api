@@ -106,18 +106,32 @@ binding and no resistance to copying an enrolled browser profile. The accepted f
 unlock from a copied enrolled Chrome/Chromium profile when the attacker can
 also complete qualifying Keycloak authentication against an honest API.
 
-Passphrases collected for enrollment use extension-owned Quick Access and do
-not traverse page/content-script messaging or remember-passphrase storage.
+Passphrases collected for enrollment are requested only after the fresh OIDC
+stage completes, use a dedicated extension-owned Quick Access form, and do not
+traverse page/content-script messaging, `passbolt.passphrase.request`, or
+remember-passphrase storage. The form clears its controlled value before the
+asynchronous enrollment operation proceeds.
 Passphrases recovered during login exist only in extension background memory,
 are passed directly to unchanged GPGAuth, and are never persisted.
 
 Passphrase rotation is fail closed: after the existing client validates and
-prepares the key update, the plugin atomically revokes all current-user crypto
-enrollments and invalidates in-flight release state before the normal key
-update can succeed. Final share release rechecks the enrollment while holding
-the same database locks. Local IndexedDB cleanup happens only after the normal
-rotation completes; cleanup failure cannot reactivate the overwritten server
-share and can be retried from the server-returned client-enrollment UUIDs.
+prepares the key update, the plugin locks the current user's database row and
+atomically activates a unique per-user rotation barrier, revokes all crypto
+enrollments, overwrites their encrypted shares, and invalidates in-flight
+enrollment/release state. Enrollment/release starts, enrollment commits, and
+final releases take the same user lock and reject an active barrier, so a
+racing operation cannot survive.
+The barrier is completed or failed only with a random capability scoped to the
+normally authenticated user; a failed rotation never restores old shares. The
+extension deletes returned local enrollment records before changing the key.
+An uncertain completion leaves the barrier active and SSO blocked, while
+normal GPGAuth remains usable and a fresh browser-profile enrollment is always
+required after rotation.
+
+Security invariant: no enrollment may commit and no server share may be
+released while the owning user's rotation barrier is active. Starting before
+the barrier is insufficient; the final database transaction must serialize on
+the user row and recheck the barrier.
 
 The fixed protocol, amended transcript schemas, rotation rules, and accepted
 trust model are frozen in `docs/CRYPTOGRAPHIC_SSO_PROTOCOL_V1.md`. Active KEK
