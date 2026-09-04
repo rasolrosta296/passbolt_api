@@ -1,0 +1,48 @@
+<?php
+declare(strict_types=1);
+
+namespace Passbolt\KeycloakSso\Test\TestCase\Service\Audit;
+
+use Cake\Log\Engine\ArrayLog;
+use Cake\Log\Log;
+use Passbolt\KeycloakSso\Service\Audit\CryptoSsoAuditService;
+use PHPUnit\Framework\TestCase;
+
+final class CryptoSsoAuditServiceTest extends TestCase
+{
+    private const LOGGER = 'keycloak_crypto_security_test';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Log::drop(self::LOGGER);
+        Log::setConfig(self::LOGGER, [
+            'className' => ArrayLog::class,
+            'levels' => ['info'],
+        ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Log::drop(self::LOGGER);
+        parent::tearDown();
+    }
+
+    public function testOnlyAllowlistedMetadataCanReachLogs(): void
+    {
+        (new CryptoSsoAuditService())->record(
+            'authorization-code-sensitive',
+            'id-token-sensitive',
+            'server-share-sensitive'
+        );
+        $engine = Log::engine(self::LOGGER);
+        $this->assertInstanceOf(ArrayLog::class, $engine);
+        $output = implode("\n", $engine->read());
+        $this->assertStringContainsString('event=release_failed', $output);
+        $this->assertStringContainsString('user=anonymous', $output);
+        $this->assertStringContainsString('category=unexpected', $output);
+        foreach (['authorization-code-sensitive', 'id-token-sensitive', 'server-share-sensitive'] as $secret) {
+            $this->assertStringNotContainsString($secret, $output);
+        }
+    }
+}

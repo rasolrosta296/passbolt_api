@@ -27,4 +27,14 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['POST']);
     $routes->connect('/unlink', ['controller' => 'IdentityLink', 'action' => 'unlink'])
         ->setMethods(['POST']);
+    $routes->connect('/crypto/enroll/start', ['controller' => 'CryptoSso', 'action' => 'startEnrollment'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/enroll', ['controller' => 'CryptoSso', 'action' => 'enroll'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/login/start', ['controller' => 'CryptoSso', 'action' => 'startLogin'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/release', ['controller' => 'CryptoSso', 'action' => 'release'])
+        ->setMethods(['POST']);
+    $routes->connect('/crypto/complete', ['controller' => 'CryptoSso', 'action' => 'complete'])
+        ->setMethods(['GET']);
 });

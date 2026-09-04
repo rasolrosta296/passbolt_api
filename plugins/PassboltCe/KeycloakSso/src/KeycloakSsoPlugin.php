@@ -5,6 +5,8 @@ namespace Passbolt\KeycloakSso;
 
 use Cake\Core\BasePlugin;
 use Cake\Core\ContainerInterface;
+use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactory;
+use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactoryInterface;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactory;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactoryInterface;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactory;
@@ -19,5 +21,6 @@ final class KeycloakSsoPlugin extends BasePlugin
     {
         $container->add(OidcServiceFactoryInterface::class)->setConcrete(OidcServiceFactory::class);
         $container->add(IdentityLinkServiceFactoryInterface::class)->setConcrete(IdentityLinkServiceFactory::class);
+        $container->add(CryptoSsoServiceFactoryInterface::class)->setConcrete(CryptoSsoServiceFactory::class);
     }
 }
