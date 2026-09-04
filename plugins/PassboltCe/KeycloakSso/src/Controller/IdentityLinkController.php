@@ -107,9 +107,11 @@ final class IdentityLinkController extends AppController
         $userId = $this->activeSessionUserId();
         $this->requireConfirmation('unlink_keycloak_identity');
         try {
-            $this->factory()->unlinker()->unlink($userId);
+            $clientEnrollmentIds = $this->factory()->unlinker()->unlink($userId);
             $this->noStore();
-            $this->success(__('The Keycloak identity was unlinked. Normal Passbolt login remains available.'));
+            $this->success(__('The Keycloak identity was unlinked. Normal Passbolt login remains available.'), [
+                'client_enrollment_uuids' => $clientEnrollmentIds,
+            ]);
         } catch (IdentityLinkException) {
             $this->noStore();
             $this->error(__('The Keycloak identity could not be unlinked.'));
