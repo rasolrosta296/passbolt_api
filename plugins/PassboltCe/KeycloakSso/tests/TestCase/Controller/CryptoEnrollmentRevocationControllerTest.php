@@ -10,7 +10,9 @@ use Passbolt\KeycloakSso\Test\Lib\KeycloakSsoIntegrationTestCase;
 
 final class CryptoEnrollmentRevocationControllerTest extends KeycloakSsoIntegrationTestCase
 {
-    /** @var array<string, string|false> */
+    /**
+     * @var array<string, string|false>
+     */
     private array $previousEnvironment = [];
 
     public function setUp(): void

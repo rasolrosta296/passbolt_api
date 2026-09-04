@@ -7,6 +7,7 @@ use App\Model\Entity\User;
 use App\Test\Factory\UserFactory;
 use App\Utility\UuidFactory;
 use Cake\I18n\DateTime;
+use Cake\ORM\Table;
 use Cake\ORM\TableRegistry;
 use Passbolt\KeycloakSso\Cryptography\Protocol\CborProtocolV1;
 use Passbolt\KeycloakSso\Model\Dto\PendingIdentityLink;
@@ -93,7 +94,8 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
         $enrollmentId = UuidFactory::uuid();
         $clientEnrollmentId = UuidFactory::uuid();
         $enrollment = $this->enrollments()->newEmptyEntity();
-        foreach ([
+        foreach (
+            [
             'id' => $enrollmentId,
             'user_id' => $user->id,
             'identity_id' => $identity->id,
@@ -109,7 +111,8 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
             'protocol_version' => CborProtocolV1::VERSION,
             'crypto_suite' => CborProtocolV1::SUITE,
             'status' => KeycloakSsoCryptoEnrollment::STATUS_ACTIVE,
-        ] as $field => $value) {
+            ] as $field => $value
+        ) {
             $enrollment->set($field, $value);
         }
         $this->enrollments()->saveOrFail($enrollment);
@@ -121,7 +124,8 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
     {
         $id = UuidFactory::uuid();
         $request = $this->requests()->newEmptyEntity();
-        foreach ([
+        foreach (
+            [
             'id' => $id,
             'purpose' => KeycloakSsoCryptoRequest::PURPOSE_RELEASE,
             'user_id' => $userId,
@@ -131,7 +135,8 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
             'client_nonce_hash' => hash('sha256', $id),
             'status' => $status,
             'expires' => DateTime::now()->addMinutes(5),
-        ] as $field => $value) {
+            ] as $field => $value
+        ) {
             $request->set($field, $value);
         }
         $this->requests()->saveOrFail($request);
@@ -143,7 +148,8 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
     {
         $id = UuidFactory::uuid();
         $transaction = $this->transactions()->newEmptyEntity();
-        foreach ([
+        foreach (
+            [
             'id' => $id,
             'state_hash' => hash('sha256', 'state:' . $id),
             'nonce_hash' => hash('sha256', 'nonce:' . $id),
@@ -164,23 +170,24 @@ final class RevokeCryptoEnrollmentsServiceTest extends KeycloakSsoIntegrationTes
                 ? DateTime::now()->addMinutes(1)
                 : null,
             'expires' => DateTime::now()->addMinutes(5),
-        ] as $field => $value) {
+            ] as $field => $value
+        ) {
             $transaction->set($field, $value);
         }
         $this->transactions()->saveOrFail($transaction);
     }
 
-    private function enrollments(): \Cake\ORM\Table
+    private function enrollments(): Table
     {
         return TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoCryptoEnrollments');
     }
 
-    private function requests(): \Cake\ORM\Table
+    private function requests(): Table
     {
         return TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests');
     }
 
-    private function transactions(): \Cake\ORM\Table
+    private function transactions(): Table
     {
         return TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoTransactions');
     }
