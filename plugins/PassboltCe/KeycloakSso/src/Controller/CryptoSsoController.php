@@ -121,6 +121,27 @@ final class CryptoSsoController extends AppController
     }
 
     /**
+     * Revoke every cryptographic enrollment owned by the authenticated user.
+     */
+    public function revokeEnrollments(): void
+    {
+        $userId = $this->activeUserId();
+        $audit = new CryptoSsoAuditService();
+        try {
+            $clientEnrollmentIds = $this->factory()->revocation()->revokeAllForUser($userId);
+            $this->noStore();
+            $audit->record('enrollment_revoked', $userId, 'revoked');
+            $this->success(__('The cryptographic SSO enrollments were revoked.'), [
+                'client_enrollment_uuids' => $clientEnrollmentIds,
+            ]);
+        } catch (Throwable $exception) {
+            $this->noStore();
+            $audit->record('enrollment_revocation_failed', $userId, $this->category($exception));
+            throw $exception;
+        }
+    }
+
+    /**
      * Render the fixed OIDC completion page.
      */
     public function complete(): void

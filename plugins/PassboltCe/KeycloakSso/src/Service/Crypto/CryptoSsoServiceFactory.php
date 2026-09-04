@@ -72,6 +72,14 @@ final class CryptoSsoServiceFactory implements CryptoSsoServiceFactoryInterface
     }
 
     /**
+     * Build current-user enrollment revocation across every linked issuer.
+     */
+    public function revocation(): RevokeCryptoEnrollmentsService
+    {
+        return new RevokeCryptoEnrollmentsService();
+    }
+
+    /**
      * Build the existing-session inspection service.
      */
     public function sessions(): AuthenticatedPassboltSessionService

@@ -111,6 +111,14 @@ not traverse page/content-script messaging or remember-passphrase storage.
 Passphrases recovered during login exist only in extension background memory,
 are passed directly to unchanged GPGAuth, and are never persisted.
 
+Passphrase rotation is fail closed: after the existing client validates and
+prepares the key update, the plugin atomically revokes all current-user crypto
+enrollments and invalidates in-flight release state before the normal key
+update can succeed. Final share release rechecks the enrollment while holding
+the same database locks. Local IndexedDB cleanup happens only after the normal
+rotation completes; cleanup failure cannot reactivate the overwritten server
+share and can be retried from the server-returned client-enrollment UUIDs.
+
 The fixed protocol, amended transcript schemas, rotation rules, and accepted
 trust model are frozen in `docs/CRYPTOGRAPHIC_SSO_PROTOCOL_V1.md`. Active KEK
 rotation is completed by configuring both old and new keys, selecting the new

@@ -67,7 +67,11 @@ Identity unlink is a normal authenticated, CSRF-protected, explicitly confirmed 
 
 Logout removes transient passphrase, server share, decrypted OpenPGP objects, ephemeral HPKE keys, and release capabilities. It retains the profile-resident enrollment keys and encrypted client envelope. No SSO-derived plaintext passphrase is persisted.
 
-Passphrase or OpenPGP-key rotation revokes affected enrollments and requires re-enrollment. Issuer or subject changes require explicit identity re-linking and a new enrollment. KEK rotation rewraps `KS` under the new active key ID. Protocol upgrades create versioned new enrollments and never downgrade silently.
+Passphrase or OpenPGP-key rotation revokes affected enrollments and requires re-enrollment. The extension first validates and locally prepares the existing Passbolt key update. Before the normal update crosses its success boundary, an authenticated and CSRF-protected plugin endpoint atomically locks all enrollments for the current session user, terminally fails every outstanding release request and OIDC result, overwrites the protected server-share fields, and marks each enrollment revoked. Only then may the unchanged Passbolt key-update workflow persist the re-encrypted key. After that workflow completes, the extension removes the returned client-enrollment UUIDs from local IndexedDB. A revocation failure aborts the key update; a later local-cleanup failure never reactivates the server enrollment and is safe to retry.
+
+The final share-release transaction locks the same identity and enrollment rows and rechecks active status immediately before decrypting `KS`. This gives revocation and release a single database ordering: a release that completes before revocation begins may succeed, while no transaction or capability can release `KS` after revocation commits. The passphrase-update controller does not replace a keypair, so its fingerprint ordinarily remains unchanged; revocation is triggered by the passphrase operation itself, never inferred from fingerprint change. Any separate OpenPGP key replacement must likewise revoke every enrollment bound to the old fingerprint before it succeeds.
+
+Issuer or subject changes require explicit identity re-linking and a new enrollment. KEK rotation rewraps `KS` under the new active key ID. Protocol upgrades create versioned new enrollments and never downgrade silently.
 
 ## Accepted first-release trust model
 

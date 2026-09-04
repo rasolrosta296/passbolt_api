@@ -28,6 +28,7 @@ use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoOidcProofService;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoReleaseService;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoResultClaimService;
+use Passbolt\KeycloakSso\Service\Crypto\RevokeCryptoEnrollmentsService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
@@ -59,6 +60,18 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
         $this->assertAuthenticationError();
         $this->assertEmpty($this->getSession()->read('Auth.user'));
         $this->assertSame($tokenCount, AuthenticationTokenFactory::count());
+
+        $this->expectException(CryptoSsoException::class);
+        $fixture['service']->release($fixture['token'], [
+            'request_id' => $fixture['request_id'],
+            'signature' => $this->sign($fixture['signing_key'], $fixture['release_transcript']),
+        ]);
+    }
+
+    public function testCompletedOidcCapabilityCannotReleaseAfterPassphraseRotationRevocation(): void
+    {
+        $fixture = $this->releaseFixture();
+        (new RevokeCryptoEnrollmentsService())->revokeAllForUser($fixture['user_id']);
 
         $this->expectException(CryptoSsoException::class);
         $fixture['service']->release($fixture['token'], [
@@ -208,6 +221,7 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
             'hpke_suite' => $hpkeSuite,
             'hpke_private_key' => $hpkePrivateKey,
             'context' => $context,
+            'user_id' => $user->id,
         ];
     }
 

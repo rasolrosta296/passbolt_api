@@ -45,4 +45,20 @@ final class CryptoSsoAuditServiceTest extends TestCase
             $this->assertStringNotContainsString($secret, $output);
         }
     }
+
+    public function testEnrollmentRevocationAuditContainsNoCallerSuppliedSecrets(): void
+    {
+        $userId = '10000000-0000-4000-8000-000000000001';
+        (new CryptoSsoAuditService())->record('enrollment_revoked', $userId, 'revoked');
+
+        $engine = Log::engine(self::LOGGER);
+        $this->assertInstanceOf(ArrayLog::class, $engine);
+        $output = implode("\n", $engine->read());
+        $this->assertStringContainsString('event=enrollment_revoked', $output);
+        $this->assertStringContainsString('user=' . $userId, $output);
+        $this->assertStringContainsString('category=revoked', $output);
+        foreach (['server_share', 'client_enrollment_uuid', 'authorization_code', 'token'] as $secretName) {
+            $this->assertStringNotContainsString($secretName, $output);
+        }
+    }
 }
