@@ -5,6 +5,7 @@ namespace Passbolt\KeycloakSso\Service\Transaction;
 
 use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoRequest;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 
 final class CleanupOidcTransactionsService
@@ -36,6 +37,7 @@ final class CleanupOidcTransactionsService
                     KeycloakSsoTransaction::STATUS_PENDING,
                     KeycloakSsoTransaction::STATUS_PROCESSING,
                     KeycloakSsoTransaction::STATUS_LINKING,
+                    KeycloakSsoTransaction::STATUS_CRYPTO_PROCESSING,
                 ],
                 'expires <=' => $now,
             ]
@@ -56,6 +58,27 @@ final class CleanupOidcTransactionsService
             'status IN' => [
                 KeycloakSsoTransaction::STATUS_FAILED,
                 KeycloakSsoTransaction::STATUS_RESULT_CONSUMED,
+            ],
+            'modified <' => $now->subSeconds(self::TERMINAL_RETENTION_SECONDS),
+        ]);
+
+        $cryptoRequests = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests');
+        $cryptoRequests->updateAll([
+            'status' => KeycloakSsoCryptoRequest::STATUS_FAILED,
+            'request_ciphertext' => null,
+            'modified' => $now,
+        ], [
+            'status IN' => [
+                KeycloakSsoCryptoRequest::STATUS_PENDING_OIDC,
+                KeycloakSsoCryptoRequest::STATUS_OIDC_VERIFIED,
+                KeycloakSsoCryptoRequest::STATUS_PROCESSING,
+            ],
+            'expires <=' => $now,
+        ]);
+        $deleted += $cryptoRequests->deleteAll([
+            'status IN' => [
+                KeycloakSsoCryptoRequest::STATUS_FAILED,
+                KeycloakSsoCryptoRequest::STATUS_CONSUMED,
             ],
             'modified <' => $now->subSeconds(self::TERMINAL_RETENTION_SECONDS),
         ]);

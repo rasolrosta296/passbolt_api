@@ -75,6 +75,22 @@ final class OidcConfigurationServiceTest extends TestCase
         (new OidcConfigurationService())->load($environment);
     }
 
+    public function testSecuritySecretRotationChangesConfigurationHash(): void
+    {
+        $service = new OidcConfigurationService();
+        $environment = $this->validEnvironment();
+        $initial = $service->load($environment)->configurationHash();
+
+        $environment[KeycloakSsoEnvironment::CLIENT_SECRET] = 'rotated-client-secret';
+        $clientSecretRotated = $service->load($environment)->configurationHash();
+        $environment = $this->validEnvironment();
+        $environment[KeycloakSsoEnvironment::TRANSACTION_ENCRYPTION_KEY] = base64_encode(str_repeat('r', 32));
+        $transactionKeyRotated = $service->load($environment)->configurationHash();
+
+        $this->assertNotSame($initial, $clientSecretRotated);
+        $this->assertNotSame($initial, $transactionKeyRotated);
+    }
+
     /** @return array<string, string> */
     private function validEnvironment(): array
     {

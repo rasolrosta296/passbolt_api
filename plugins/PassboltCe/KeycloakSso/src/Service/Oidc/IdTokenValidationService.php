@@ -86,7 +86,25 @@ final class IdTokenValidationService
             throw new OidcValidationException('email_not_verified');
         }
 
-        return new ValidatedOidcIdentity($subject, $email);
+        $authTime = $claims['auth_time'] ?? null;
+        $acr = $claims['acr'] ?? null;
+        $amr = $claims['amr'] ?? [];
+        if ($authTime !== null && !is_int($authTime)) {
+            throw new OidcValidationException('invalid_auth_time');
+        }
+        if ($acr !== null && (!is_string($acr) || $acr === '' || strlen($acr) > 255)) {
+            throw new OidcValidationException('invalid_acr');
+        }
+        if (!is_array($amr) || !array_is_list($amr)) {
+            throw new OidcValidationException('invalid_amr');
+        }
+        foreach ($amr as $method) {
+            if (!is_string($method) || $method === '' || strlen($method) > 64) {
+                throw new OidcValidationException('invalid_amr');
+            }
+        }
+
+        return new ValidatedOidcIdentity($subject, $email, $authTime, $acr, $amr);
     }
 
     /**

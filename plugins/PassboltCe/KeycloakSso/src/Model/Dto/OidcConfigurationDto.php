@@ -9,6 +9,7 @@ final readonly class OidcConfigurationDto
 {
     public const TRANSACTION_TTL_SECONDS = 300;
     public const RESULT_TTL_SECONDS = 60;
+    public const CRYPTO_RESULT_TTL_SECONDS = 300;
     public const MAX_ID_TOKEN_AGE_SECONDS = 300;
     public const CLOCK_SKEW_SECONDS = 60;
     public const HTTP_TIMEOUT_SECONDS = 5;
@@ -38,10 +39,14 @@ final readonly class OidcConfigurationDto
     }
 
     /**
-     * Bind transactions to security-relevant non-secret configuration.
+     * Bind transactions to the complete security-relevant configuration.
      */
     public function configurationHash(): string
     {
-        return hash('sha256', implode("\0", [$this->issuer, $this->clientId, $this->redirectUri]));
+        return hash_hmac(
+            'sha256',
+            implode("\0", [$this->issuer, $this->clientId, $this->redirectUri, $this->clientSecret]),
+            $this->transactionEncryptionKey
+        );
     }
 }

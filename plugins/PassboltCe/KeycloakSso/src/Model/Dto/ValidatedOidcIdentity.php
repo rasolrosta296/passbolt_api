@@ -11,6 +11,10 @@ final readonly class ValidatedOidcIdentity
     public function __construct(
         public string $subject,
         public string $email,
+        public ?int $authTime = null,
+        public ?string $acr = null,
+        /** @var list<string> */
+        public array $amr = [],
     ) {
     }
 }

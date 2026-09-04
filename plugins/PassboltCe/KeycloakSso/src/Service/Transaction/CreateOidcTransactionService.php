@@ -34,16 +34,29 @@ final class CreateOidcTransactionService
         string $configurationHash,
         int $ttlSeconds,
         string $purpose = KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
-        ?string $requestedUserId = null
+        ?string $requestedUserId = null,
+        ?string $cryptoRequestId = null
     ): CreatedOidcTransaction {
-        $isLink = $purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK;
+        $requiresUser = in_array($purpose, [
+            KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK,
+            KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+            KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
+        ], true);
+        $isCrypto = in_array($purpose, [
+            KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+            KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
+        ], true);
         if (
             !in_array($purpose, [
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK,
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
             ], true) ||
-            ($isLink && (!is_string($requestedUserId) || !Validation::uuid($requestedUserId))) ||
-            (!$isLink && $requestedUserId !== null)
+            ($requiresUser && (!is_string($requestedUserId) || !Validation::uuid($requestedUserId))) ||
+            (!$requiresUser && $requestedUserId !== null) ||
+            ($isCrypto && (!is_string($cryptoRequestId) || !Validation::uuid($cryptoRequestId))) ||
+            (!$isCrypto && $cryptoRequestId !== null)
         ) {
             throw new OidcTransactionException('The OIDC transaction purpose is invalid.');
         }
@@ -70,6 +83,7 @@ final class CreateOidcTransactionService
             'redirect_uri' => $redirectUri,
             'purpose' => $purpose,
             'requested_user_id' => $requestedUserId,
+            'crypto_request_id' => $cryptoRequestId,
             'status' => KeycloakSsoTransaction::STATUS_PENDING,
             'expires' => DateTime::now()->addSeconds($ttlSeconds),
         ];

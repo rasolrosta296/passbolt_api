@@ -23,6 +23,10 @@ final class KeycloakSsoTransactionsTable extends Table
             'className' => 'Users',
             'foreignKey' => 'requested_user_id',
         ]);
+        $this->belongsTo('CryptoRequests', [
+            'className' => 'Passbolt/KeycloakSso.KeycloakSsoCryptoRequests',
+            'foreignKey' => 'crypto_request_id',
+        ]);
     }
 
     /**
@@ -62,11 +66,14 @@ final class KeycloakSsoTransactionsTable extends Table
             ->inList('purpose', [
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK,
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
             ])
             ->requirePresence('purpose', 'create')
             ->notEmptyString('purpose')
             ->allowEmptyString('requested_user_id')
             ->allowEmptyString('link_identity_ciphertext')
+            ->allowEmptyString('crypto_request_id')
             ->scalar('status')
             ->maxLength('status', 32)
             ->requirePresence('status', 'create')
@@ -90,6 +97,9 @@ final class KeycloakSsoTransactionsTable extends Table
         $rules->add($rules->isUnique(['result_token_hash']), ['errorField' => 'result_token_hash']);
         $rules->add($rules->existsIn(['requested_user_id'], 'Users', ['allowNullableNulls' => true]), [
             'errorField' => 'requested_user_id',
+        ]);
+        $rules->add($rules->existsIn(['crypto_request_id'], 'CryptoRequests', ['allowNullableNulls' => true]), [
+            'errorField' => 'crypto_request_id',
         ]);
 
         return $rules;

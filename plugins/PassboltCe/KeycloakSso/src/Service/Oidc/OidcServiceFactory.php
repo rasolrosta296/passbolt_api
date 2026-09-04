@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Service\Oidc;
 use Passbolt\KeycloakSso\Configuration\OidcConfigurationService;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Service\Audit\IdentityLinkAuditService;
+use Passbolt\KeycloakSso\Service\Crypto\CryptoOidcProofService;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkProofProtector;
@@ -71,7 +72,8 @@ final class OidcServiceFactory implements OidcServiceFactoryInterface
                 $links,
                 new IdentityLinkProofProtector($protector),
                 new IdentityLinkAuditService()
-            )
+            ),
+            new CryptoOidcProofService()
         );
     }
 

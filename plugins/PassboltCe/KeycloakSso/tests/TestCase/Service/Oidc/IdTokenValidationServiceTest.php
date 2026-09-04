@@ -55,6 +55,24 @@ final class IdTokenValidationServiceTest extends TestCase
         $this->assertSame('user@example.com', $identity->email);
     }
 
+    public function testReturnsStrictReleaseFreshnessClaims(): void
+    {
+        $claims = $this->validClaims() + [
+            'auth_time' => $this->now,
+            'acr' => 'urn:keycloak:acr:mfa',
+            'amr' => ['pwd', 'otp'],
+        ];
+        $identity = $this->service()->validate(
+            $this->token($claims),
+            hash('sha256', self::NONCE),
+            $this->now
+        );
+
+        $this->assertSame($this->now, $identity->authTime);
+        $this->assertSame('urn:keycloak:acr:mfa', $identity->acr);
+        $this->assertSame(['pwd', 'otp'], $identity->amr);
+    }
+
     /** @param callable(array<string, mixed>): array<string, mixed> $mutation */
     #[DataProvider('invalidClaimsProvider')]
     public function testRejectsInvalidClaims(callable $mutation, string $reason): void
@@ -87,6 +105,10 @@ final class IdTokenValidationServiceTest extends TestCase
             'email missing' => [self::remove('email_verified'), 'email_not_verified'],
             'email non-boolean' => [self::set('email_verified', 'true'), 'email_not_verified'],
             'malformed email' => [self::set('email', 'not-an-email'), 'invalid_email'],
+            'auth time string' => [self::set('auth_time', '1'), 'invalid_auth_time'],
+            'acr non-string' => [self::set('acr', 1), 'invalid_acr'],
+            'amr non-list' => [self::set('amr', ['method' => 'pwd']), 'invalid_amr'],
+            'amr non-string member' => [self::set('amr', ['pwd', 1]), 'invalid_amr'],
         ];
     }
 

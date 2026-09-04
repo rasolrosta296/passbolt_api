@@ -56,6 +56,14 @@ final class CallbackController extends AppController
             } elseif ($result->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK) {
                 $cookie = OidcCookieService::linkResult($result->token);
                 $resultRoute = '/auth/keycloak/link/confirm';
+            } elseif (
+                in_array($result->purpose, [
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
+                ], true)
+            ) {
+                $cookie = OidcCookieService::cryptoResult($result->token);
+                $resultRoute = '/auth/keycloak/crypto/complete';
             } else {
                 throw new OidcValidationException('invalid_transaction_purpose');
             }

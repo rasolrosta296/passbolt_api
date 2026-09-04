@@ -53,7 +53,7 @@ final class TransactionSecretProtector
             substr($payload, 0, $nonceLength),
             $this->key
         );
-        if ($plaintext === false) {
+        if (!is_string($plaintext)) {
             throw new OidcTransactionException('The protected transaction secret cannot be authenticated.');
         }
 

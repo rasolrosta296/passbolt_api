@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Service\Oidc;
 
+use InvalidArgumentException;
 use Passbolt\KeycloakSso\Model\Dto\CreatedOidcTransaction;
 use Passbolt\KeycloakSso\Model\Dto\OidcAuthorizationRequest;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
@@ -46,9 +47,10 @@ final class AuthorizationRequestService implements AuthorizationRequestProviderI
     public static function buildAuthorizationUrl(
         OidcConfigurationDto $configuration,
         string $authorizationEndpoint,
-        CreatedOidcTransaction $transaction
+        CreatedOidcTransaction $transaction,
+        array $additionalParameters = []
     ): string {
-        $query = http_build_query([
+        $parameters = [
             'response_type' => 'code',
             'response_mode' => 'query',
             'client_id' => $configuration->clientId,
@@ -58,7 +60,14 @@ final class AuthorizationRequestService implements AuthorizationRequestProviderI
             'nonce' => $transaction->nonce,
             'code_challenge' => $transaction->pkceChallenge,
             'code_challenge_method' => 'S256',
-        ], '', '&', PHP_QUERY_RFC3986);
+        ];
+        foreach ($additionalParameters as $name => $value) {
+            if (!is_string($name) || !is_string($value) || array_key_exists($name, $parameters)) {
+                throw new InvalidArgumentException('Invalid additional authorization parameter.');
+            }
+            $parameters[$name] = $value;
+        }
+        $query = http_build_query($parameters, '', '&', PHP_QUERY_RFC3986);
 
         return $authorizationEndpoint . '?' . $query;
     }
