@@ -56,7 +56,8 @@ final class CborProtocolV1
         }
         self::assertOrigin($context['passbolt_origin']);
         foreach (['user_uuid', 'identity_uuid', 'enrollment_uuid', 'client_enrollment_uuid'] as $field) {
-            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D', $context[$field]) !== 1) {
+            $uuidV4 = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D';
+            if (preg_match($uuidV4, $context[$field]) !== 1) {
                 throw new InvalidArgumentException(sprintf('%s must be a canonical lowercase UUIDv4.', $field));
             }
         }
@@ -87,26 +88,62 @@ final class CborProtocolV1
         ]);
     }
 
-    /**
-     * Encode a signature transcript that binds request-specific public data to an approved domain.
-     *
-     * @param array<string, mixed> $context
-     * @param list<string> $requestValues
-     */
-    public static function encodeTranscript(string $binding, array $context, array $requestValues = []): string
-    {
-        if (!array_key_exists($binding, self::DOMAINS)) {
-            throw new InvalidArgumentException('Unknown protocol domain.');
-        }
-        $items = [TextStringObject::create(self::DOMAINS[$binding]), self::contextObject($context)];
-        foreach ($requestValues as $value) {
-            if (!is_string($value) || !mb_check_encoding($value, 'UTF-8')) {
-                throw new InvalidArgumentException('Transcript request values must be valid UTF-8 text strings.');
-            }
-            $items[] = TextStringObject::create($value);
-        }
+    /** @param array<string, mixed> $context */
+    public static function encodeEnrollmentTranscript(
+        array $context,
+        string $clientBlobDigest,
+        string $serverShareDigest
+    ): string {
+        return self::encodeFixedTranscript('enrollment_transcript', $context, [
+            $clientBlobDigest,
+            $serverShareDigest,
+        ]);
+    }
 
-        return (string)ListObject::create($items);
+    /** @param array<string, mixed> $context */
+    public static function encodeDeviceLoginTranscript(
+        array $context,
+        string $clientNonce,
+        string $hpkeRecipientPublicKey,
+        string $clientBlobDigest
+    ): string {
+        return self::encodeFixedTranscript('device_login', $context, [
+            $clientNonce,
+            $hpkeRecipientPublicKey,
+            $clientBlobDigest,
+        ]);
+    }
+
+    /** @param array<string, mixed> $context */
+    public static function encodeReleasePackageTranscript(
+        array $context,
+        string $clientNonce,
+        string $hpkeRecipientPublicKey,
+        string $requestId
+    ): string {
+        return self::encodeFixedTranscript('release_package', $context, [
+            $clientNonce,
+            $hpkeRecipientPublicKey,
+            $requestId,
+        ]);
+    }
+
+    /** @return array{context: array<string, string>, values: list<string>} */
+    public static function decodeEnrollmentTranscript(string $encoded): array
+    {
+        return self::decodeFixedTranscript($encoded, 'enrollment_transcript', 2);
+    }
+
+    /** @return array{context: array<string, string>, values: list<string>} */
+    public static function decodeDeviceLoginTranscript(string $encoded): array
+    {
+        return self::decodeFixedTranscript($encoded, 'device_login', 3);
+    }
+
+    /** @return array{context: array<string, string>, values: list<string>} */
+    public static function decodeReleasePackageTranscript(string $encoded): array
+    {
+        return self::decodeFixedTranscript($encoded, 'release_package', 3);
     }
 
     /** @return array<string, string> */
@@ -119,14 +156,7 @@ final class CborProtocolV1
         if (get_class($decoded) !== ListObject::class || count($decoded) !== count(self::FIELDS)) {
             throw new InvalidArgumentException('Encoded context does not match the fixed array schema.');
         }
-        $context = [];
-        foreach (self::FIELDS as $index => $field) {
-            $value = $decoded->get($index);
-            if (get_class($value) !== TextStringObject::class) {
-                throw new InvalidArgumentException('Encoded context contains a non-text value.');
-            }
-            $context[$field] = $value->getValue();
-        }
+        $context = self::contextFromObject($decoded);
         self::validate($context);
         if (!hash_equals($encoded, self::encodeContext($context))) {
             throw new InvalidArgumentException('Encoded context is not its deterministic representation.');
@@ -153,6 +183,92 @@ final class CborProtocolV1
         return ListObject::create($items);
     }
 
+    /**
+     * @param array<string, mixed> $context
+     * @param list<string> $requestValues
+     */
+    private static function encodeFixedTranscript(string $binding, array $context, array $requestValues): string
+    {
+        $values = [];
+        foreach ($requestValues as $value) {
+            if ($value === '' || !mb_check_encoding($value, 'UTF-8')) {
+                throw new InvalidArgumentException('Transcript values must be non-empty UTF-8 text strings.');
+            }
+            $values[] = TextStringObject::create($value);
+        }
+
+        return (string)ListObject::create([
+            ListObject::create([
+                TextStringObject::create(self::DOMAINS[$binding]),
+                self::contextObject($context),
+            ]),
+            ListObject::create($values),
+        ]);
+    }
+
+    /** @return array{context: array<string, string>, values: list<string>} */
+    private static function decodeFixedTranscript(string $encoded, string $binding, int $valueCount): array
+    {
+        if ($encoded === '' || strlen($encoded) > self::MAX_CONTEXT_BYTES * 2) {
+            throw new InvalidArgumentException('Encoded transcript size is invalid.');
+        }
+        $decoded = Decoder::create(maxDepth: 4)->decode(StringStream::create($encoded));
+        if (get_class($decoded) !== ListObject::class || count($decoded) !== 2) {
+            throw new InvalidArgumentException('Encoded transcript does not match its fixed schema.');
+        }
+        $domainBinding = $decoded->get(0);
+        $valuesObject = $decoded->get(1);
+        if (
+            get_class($domainBinding) !== ListObject::class || count($domainBinding) !== 2 ||
+            get_class($valuesObject) !== ListObject::class || count($valuesObject) !== $valueCount
+        ) {
+            throw new InvalidArgumentException('Encoded transcript does not match its fixed schema.');
+        }
+        $domain = $domainBinding->get(0);
+        $contextObject = $domainBinding->get(1);
+        if (
+            get_class($domain) !== TextStringObject::class ||
+            !hash_equals(self::DOMAINS[$binding], $domain->getValue()) ||
+            get_class($contextObject) !== ListObject::class || count($contextObject) !== count(self::FIELDS)
+        ) {
+            throw new InvalidArgumentException('Encoded transcript domain binding is invalid.');
+        }
+        $values = [];
+        for ($index = 0; $index < $valueCount; $index++) {
+            $value = $valuesObject->get($index);
+            if (get_class($value) !== TextStringObject::class || $value->getValue() === '') {
+                throw new InvalidArgumentException('Encoded transcript contains an invalid value.');
+            }
+            $values[] = $value->getValue();
+        }
+        $context = self::contextFromObject($contextObject);
+        $reencoded = self::encodeFixedTranscript($binding, $context, $values);
+        if (!hash_equals($encoded, $reencoded)) {
+            throw new InvalidArgumentException('Encoded transcript is not its deterministic representation.');
+        }
+
+        return ['context' => $context, 'values' => $values];
+    }
+
+    /** @return array<string, string> */
+    private static function contextFromObject(ListObject $object): array
+    {
+        $context = [];
+        foreach (self::FIELDS as $index => $field) {
+            $value = $object->get($index);
+            if (get_class($value) !== TextStringObject::class) {
+                throw new InvalidArgumentException('Encoded context contains a non-text value.');
+            }
+            $context[$field] = $value->getValue();
+        }
+        self::validate($context);
+
+        return $context;
+    }
+
+    /**
+     * Require a canonical public HTTPS Passbolt origin.
+     */
     private static function assertOrigin(string $origin): void
     {
         if (strlen($origin) > 255) {

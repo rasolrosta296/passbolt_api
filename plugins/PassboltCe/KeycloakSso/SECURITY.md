@@ -1,8 +1,9 @@
-# Keycloak SSO milestone-one and identity-linking security contract
+# Keycloak SSO security contract
 
-This plugin implements only an OpenID Connect identity proof and existing-user
-discovery. It does not authenticate a user to Passbolt and does not unlock a
-Passbolt vault.
+The plugin implements OIDC identity proof, permanent identity linking, and the
+reviewed version-one cryptographic release protocol. OIDC and server-share
+release do not authenticate a user to Passbolt. Only unchanged GPGAuth may do
+so after the extension locally reconstructs and validates the passphrase.
 
 ## Trust boundary
 
@@ -14,7 +15,8 @@ after the additional controls below. The plugin must not:
 - persist a CakePHP/Passbolt authentication identity or write `Auth.user`;
 - create a Passbolt session, access token, JWT, or refresh token;
 - call or modify GPGAuth or JWT authentication services;
-- store a Passbolt private key, passphrase, or wrapping secret;
+- store a Passbolt private key, plaintext passphrase, client key, or plaintext
+  server share;
 - create a user or move a link between users based on email;
 - use or enable the Passbolt Pro SSO plugin.
 
@@ -85,8 +87,38 @@ automatically relinks or migrates an identity. A changed issuer is a distinct
 provider namespace. Unlinking affects only the authenticated user's link for
 the configured issuer and never disables normal GPGAuth.
 
+## Cryptographic release boundary
+
+Each browser-profile enrollment requires an existing GPGAuth session, CSRF,
+the existing issuer/subject link, fresh interactive OIDC, the current
+passphrase in extension-owned UI, and a transcript signature from the existing
+OpenPGP private key. The API stores the independently generated server share
+only under XChaCha20-Poly1305 with a deployment KEK that must remain outside the
+database boundary. Login requires proof of the profile-resident non-extractable
+signing key, fresh `prompt=login`/`max_age=0` OIDC with exact ACR and fresh
+`auth_time`, then a second signed one-time release request. The share is sent
+only through RFC 9180 HPKE to the request-bound ephemeral recipient.
+
+The extension stores a profile-resident non-extractable `KD`, a
+profile-resident non-extractable P-256 signing key, `C2`, IVs, canonical context,
+and public metadata in IndexedDB. These keys provide no platform-keystore
+binding and no resistance to copying an enrolled browser profile. The accepted first-release model allows SSO
+unlock from a copied enrolled Chrome/Chromium profile when the attacker can
+also complete qualifying Keycloak authentication against an honest API.
+
+Passphrases collected for enrollment use extension-owned Quick Access and do
+not traverse page/content-script messaging or remember-passphrase storage.
+Passphrases recovered during login exist only in extension background memory,
+are passed directly to unchanged GPGAuth, and are never persisted.
+
+The fixed protocol, amended transcript schemas, rotation rules, and accepted
+trust model are frozen in `docs/CRYPTOGRAPHIC_SSO_PROTOCOL_V1.md`. Active KEK
+rotation is completed by configuring both old and new keys, selecting the new
+active key, running `keycloak_sso_server_shares_rewrap`, then removing the old
+key only after verification and backup-retention review.
+
 ## Deferred work
 
-Passbolt session creation from OIDC, browser-extension changes, private-key
-unlock, passphrase handling, and every cryptographic continuation are explicitly
-outside these milestones and require a separate security review.
+Firefox/Safari support, general UI polish, WebAuthn/platform binding,
+device-to-device enrollment, and account-recovery changes remain outside the
+first release. OIDC-derived Passbolt session creation remains prohibited.

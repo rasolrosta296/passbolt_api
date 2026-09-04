@@ -5,29 +5,74 @@ namespace Passbolt\KeycloakSso\Test\TestCase\Cryptography\Protocol;
 
 use InvalidArgumentException;
 use Passbolt\KeycloakSso\Cryptography\Protocol\CborProtocolV1;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class CborProtocolV1Test extends TestCase
 {
     public function testApprovedVectorAndBindings(): void
     {
-        $context = $this->context();
-        $expected = '89781870617373626f6c742d6b6579636c6f616b2d73736f2d7631' .
-            '782b4145532d3235362d47434d2b48504b452d503235362d484b44462d5348413235362d41455331323847434d' .
-            '781d68747470733a2f2f70617373626f6c742e6578616d706c652e74657374' .
-            '782431303030303030302d303030302d343030302d383030302d303030303030303030303031' .
-            '782432303030303030302d303030302d343030302d383030302d303030303030303030303032' .
-            '782433303030303030302d303030302d343030302d383030302d303030303030303030303033' .
-            '782434303030303030302d303030302d343030302d383030302d303030303030303030303034' .
-            '782830313233343536373839414243444546303132333435363738394142434445463031323334353637' .
-            '782b41414141414141414141414141414141414141414141414141414141414141414141414141414141414141';
+        $fixture = $this->fixture();
+        $context = $fixture['context'];
         $encoded = CborProtocolV1::encodeContext($context);
-        $this->assertSame($expected, bin2hex($encoded));
-        $this->assertSame('b31273c52f4b1dd77242ce0dcbeb8fb500fabded5e14fdca53bc6d080d5d3ec5', hash('sha256', $encoded));
+        $this->assertVector($fixture['vectors']['context'], $encoded);
         $this->assertSame($context, CborProtocolV1::decodeContext($encoded));
+
+        $this->assertVector($fixture['vectors']['inner_aad'], CborProtocolV1::encodeBinding('inner_aad', $context));
+        $this->assertVector($fixture['vectors']['outer_aad'], CborProtocolV1::encodeBinding('outer_aad', $context));
+        $this->assertVector(
+            $fixture['vectors']['context_hash'],
+            CborProtocolV1::encodeBinding('context_hash', $context)
+        );
     }
 
-    /** @dataProvider invalidEncodedProvider */
+    public function testApprovedFixedTranscriptVectors(): void
+    {
+        $fixture = $this->fixture();
+        $context = $fixture['context'];
+        $values = $fixture['values'];
+        $enrollment = CborProtocolV1::encodeEnrollmentTranscript(
+            $context,
+            $values['client_blob_digest'],
+            $values['server_share_digest']
+        );
+        $login = CborProtocolV1::encodeDeviceLoginTranscript(
+            $context,
+            $values['client_nonce'],
+            $values['hpke_recipient_public_key'],
+            $values['client_blob_digest']
+        );
+        $release = CborProtocolV1::encodeReleasePackageTranscript(
+            $context,
+            $values['client_nonce'],
+            $values['hpke_recipient_public_key'],
+            $values['request_id']
+        );
+
+        $this->assertVector($fixture['vectors']['enrollment_transcript'], $enrollment);
+        $this->assertVector($fixture['vectors']['device_login_transcript'], $login);
+        $this->assertVector($fixture['vectors']['release_package_transcript'], $release);
+        $this->assertSame(
+            [$values['client_blob_digest'], $values['server_share_digest']],
+            CborProtocolV1::decodeEnrollmentTranscript($enrollment)['values']
+        );
+        $this->assertSame([$values['client_nonce'], $values['hpke_recipient_public_key'],
+            $values['client_blob_digest']], CborProtocolV1::decodeDeviceLoginTranscript($login)['values']);
+        $this->assertSame(
+            [$values['client_nonce'], $values['hpke_recipient_public_key'], $values['request_id']],
+            CborProtocolV1::decodeReleasePackageTranscript($release)['values']
+        );
+    }
+
+    public function testTranscriptDecoderRejectsAlternateSchemaAndTrailingBytes(): void
+    {
+        $fixture = $this->fixture();
+        $encoded = base64_decode($fixture['vectors']['enrollment_transcript']['base64'], true);
+        $this->expectException(InvalidArgumentException::class);
+        CborProtocolV1::decodeEnrollmentTranscript($encoded . "\x00");
+    }
+
+    #[DataProvider('invalidEncodedProvider')]
     public function testRejectsMalformedOrNonCanonicalEncoding(string $hex): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -44,19 +89,18 @@ final class CborProtocolV1Test extends TestCase
         ];
     }
 
-    /** @return array<string, string> */
-    private function context(): array
+    /** @param array{base64: string, sha256: string} $vector */
+    private function assertVector(array $vector, string $actual): void
     {
-        return [
-            'protocol_version' => CborProtocolV1::VERSION,
-            'crypto_suite' => CborProtocolV1::SUITE,
-            'passbolt_origin' => 'https://passbolt.example.test',
-            'user_uuid' => '10000000-0000-4000-8000-000000000001',
-            'identity_uuid' => '20000000-0000-4000-8000-000000000002',
-            'enrollment_uuid' => '30000000-0000-4000-8000-000000000003',
-            'client_enrollment_uuid' => '40000000-0000-4000-8000-000000000004',
-            'openpgp_fingerprint' => '0123456789ABCDEF0123456789ABCDEF01234567',
-            'enrollment_public_key_thumbprint' => 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-        ];
+        $this->assertSame($vector['base64'], base64_encode($actual));
+        $this->assertSame($vector['sha256'], hash('sha256', $actual));
+    }
+
+    /** @return array<string, mixed> */
+    private function fixture(): array
+    {
+        $contents = file_get_contents(dirname(__DIR__, 3) . '/Fixture/protocol-v1-vectors.json');
+
+        return json_decode((string)$contents, true, 16, JSON_THROW_ON_ERROR);
     }
 }
