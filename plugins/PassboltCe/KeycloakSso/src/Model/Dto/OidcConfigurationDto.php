@@ -9,6 +9,7 @@ final readonly class OidcConfigurationDto
 {
     public const TRANSACTION_TTL_SECONDS = 300;
     public const RESULT_TTL_SECONDS = 60;
+    public const IDENTITY_LINK_RESULT_TTL_SECONDS = 300;
     public const CRYPTO_RESULT_TTL_SECONDS = 300;
     public const MAX_ID_TOKEN_AGE_SECONDS = 300;
     public const CLOCK_SKEW_SECONDS = 60;

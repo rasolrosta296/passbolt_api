@@ -85,10 +85,13 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
                 throw new OidcValidationException('invalid_transaction_purpose');
             }
 
-            $resultTtl = in_array($transaction->purpose, [
+            $resultTtl = match ($transaction->purpose) {
+                KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK =>
+                    OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS,
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
-                KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
-            ], true) ? OidcConfigurationDto::CRYPTO_RESULT_TTL_SECONDS : OidcConfigurationDto::RESULT_TTL_SECONDS;
+                KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE => OidcConfigurationDto::CRYPTO_RESULT_TTL_SECONDS,
+                default => OidcConfigurationDto::RESULT_TTL_SECONDS,
+            };
 
             return new OidcCallbackResult(
                 $this->transactions->succeed($transaction->id, $resultTtl),

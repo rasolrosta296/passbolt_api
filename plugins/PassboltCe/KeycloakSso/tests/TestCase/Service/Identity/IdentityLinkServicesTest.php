@@ -161,7 +161,7 @@ final class IdentityLinkServicesTest extends KeycloakSsoIntegrationTestCase
         }
     }
 
-    public function testExpiredIdentityProofCannotBeConfirmed(): void
+    public function testExpiredIdentityLinkResultCannotBeConfirmed(): void
     {
         $user = $this->activeUser('user@example.com');
         $token = $this->prepareResult($user, 'immutable-subject', $user->username);
@@ -289,7 +289,7 @@ final class IdentityLinkServicesTest extends KeycloakSsoIntegrationTestCase
 
         return $transactions->succeed(
             $claimed['transaction']->id,
-            OidcConfigurationDto::RESULT_TTL_SECONDS
+            OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS
         );
     }
 

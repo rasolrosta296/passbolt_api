@@ -3,12 +3,19 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Test\TestCase\Service\Oidc;
 
+use App\Model\Entity\User;
 use App\Test\Factory\UserFactory;
+use Cake\ORM\TableRegistry;
 use Firebase\JWT\JWT;
 use OpenSSLAsymmetricKey;
 use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
+use Passbolt\KeycloakSso\Model\Dto\OidcCallbackResult;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
+use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
+use Passbolt\KeycloakSso\Service\Identity\IdentityLinkProofProtector;
+use Passbolt\KeycloakSso\Service\Identity\PrepareIdentityLinkService;
 use Passbolt\KeycloakSso\Service\Oidc\AuthorizationCodeExchangeService;
 use Passbolt\KeycloakSso\Service\Oidc\IdTokenValidationService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCallbackService;
@@ -26,16 +33,53 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
 {
     public function testValidCompleteMilestoneFlowProducesOnlyOneTimeResult(): void
     {
-        UserFactory::make(['username' => 'user@example.com'])->user()->active()->notDisabled()->persist();
+        $flow = $this->processCallback(KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF);
+
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/', $flow['result']->token);
+        $this->assertSame($flow['created']->pkceVerifier, $flow['tokenClient']->form['code_verifier']);
+        $this->assertSame('one-time-code', $flow['tokenClient']->form['code']);
+        $this->assertResultTtl($flow['transaction'], OidcConfigurationDto::RESULT_TTL_SECONDS);
+        $flow['transactions']->consumeResult($flow['result']->token);
+
+        $this->expectException(OidcTransactionException::class);
+        $flow['transactions']->consumeResult($flow['result']->token);
+    }
+
+    public function testIdentityLinkCallbackUsesDedicatedConfirmationLifetime(): void
+    {
+        $flow = $this->processCallback(KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK);
+
+        $this->assertSame(KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK, $flow['result']->purpose);
+        $this->assertNotNull($flow['transaction']->link_identity_ciphertext);
+        $this->assertResultTtl(
+            $flow['transaction'],
+            OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS
+        );
+    }
+
+    /**
+     * @return array{
+     *   result: OidcCallbackResult,
+     *   transaction: KeycloakSsoTransaction,
+     *   tokenClient: RecordingOidcHttpClient,
+     *   transactions: ClaimOidcTransactionService,
+     *   created: \Passbolt\KeycloakSso\Model\Dto\CreatedOidcTransaction
+     * }
+     */
+    private function processCallback(string $purpose): array
+    {
+        $user = UserFactory::make(['username' => 'user@example.com'])->user()->active()->notDisabled()->persist();
+        self::assertInstanceOf(User::class, $user);
         $configuration = $this->configuration();
         $protector = new TransactionSecretProtector($configuration->transactionEncryptionKey);
-        $create = new CreateOidcTransactionService($protector);
-        $created = $create->create(
+        $created = (new CreateOidcTransactionService($protector))->create(
             $configuration->issuer,
             $configuration->clientId,
             $configuration->redirectUri,
             $configuration->configurationHash(),
-            OidcConfigurationDto::TRANSACTION_TTL_SECONDS
+            OidcConfigurationDto::TRANSACTION_TTL_SECONDS,
+            $purpose,
+            $purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK ? $user->id : null
         );
         [$privateKey, $jwk] = $this->signingKey();
         $now = time();
@@ -57,23 +101,36 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
         );
         $tokenClient = new RecordingOidcHttpClient(['id_token' => $idToken]);
         $transactions = new ClaimOidcTransactionService($protector);
+        $identityLinks = $purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK
+            ? new PrepareIdentityLinkService(
+                new ExistingUserDiscoveryService(),
+                new IdentityLinkPersistenceService(),
+                new IdentityLinkProofProtector($protector)
+            )
+            : null;
         $service = new OidcCallbackService(
             $configuration,
             $transactions,
             new AuthorizationCodeExchangeService($configuration, $discovery, $tokenClient),
             new IdTokenValidationService($configuration, new StaticJwksProvider(['keys' => [$jwk]])),
-            new ExistingUserDiscoveryService()
+            new ExistingUserDiscoveryService(),
+            $identityLinks
         );
 
         $result = $service->process($created->state, $created->browserBinding, 'one-time-code');
+        $transaction = TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoTransactions')
+            ->get($created->id);
+        self::assertInstanceOf(OidcCallbackResult::class, $result);
+        self::assertInstanceOf(KeycloakSsoTransaction::class, $transaction);
 
-        $this->assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/', $result->token);
-        $this->assertSame($created->pkceVerifier, $tokenClient->form['code_verifier']);
-        $this->assertSame('one-time-code', $tokenClient->form['code']);
-        $transactions->consumeResult($result->token);
+        return compact('result', 'transaction', 'tokenClient', 'transactions', 'created');
+    }
 
-        $this->expectException(OidcTransactionException::class);
-        $transactions->consumeResult($result->token);
+    private function assertResultTtl(KeycloakSsoTransaction $transaction, int $expectedTtl): void
+    {
+        $this->assertNotNull($transaction->result_expires);
+        $this->assertEqualsWithDelta(time() + $expectedTtl, $transaction->result_expires->getTimestamp(), 1);
     }
 
     private function configuration(): OidcConfigurationDto

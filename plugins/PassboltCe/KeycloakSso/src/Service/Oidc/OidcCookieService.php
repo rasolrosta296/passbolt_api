@@ -35,7 +35,11 @@ final class OidcCookieService
      */
     public static function linkResult(string $value): Cookie
     {
-        return self::create($value, OidcConfigurationDto::RESULT_TTL_SECONDS, self::LINK_RESULT_COOKIE);
+        return self::create(
+            $value,
+            OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS,
+            self::LINK_RESULT_COOKIE
+        );
     }
 
     /**
