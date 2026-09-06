@@ -24,6 +24,64 @@ final class JwksProviderTest extends TestCase
         Cache::clear('default');
     }
 
+    public function testAcceptsRs256SigningKey(): void
+    {
+        $key = $this->validKey('signing-key');
+
+        $this->assertSame(['keys' => [$key]], $this->provider(['keys' => [$key]])->get(true));
+    }
+
+    public function testExcludesRsaEncryptionKeyAlongsideRs256SigningKey(): void
+    {
+        $signingKey = $this->validKey('signing-key');
+        $encryptionKey = [
+            'kty' => 'RSA',
+            'kid' => 'encryption-key',
+            'use' => 'enc',
+            'alg' => 'RSA-OAEP',
+            'n' => str_repeat('B', 342),
+            'e' => 'AQAB',
+        ];
+
+        $result = $this->provider(['keys' => [$encryptionKey, $signingKey]])->get(true);
+
+        $this->assertSame(['keys' => [$signingKey]], $result);
+    }
+
+    public function testExcludesUnrelatedKeysAlongsideRs256SigningKey(): void
+    {
+        $signingKey = $this->validKey('signing-key');
+        $ecKey = [
+            'kty' => 'EC',
+            'kid' => 'ec-signing-key',
+            'use' => 'sig',
+            'alg' => 'ES256',
+        ];
+        $rsaRs512Key = [
+            'kty' => 'RSA',
+            'kid' => 'rsa-rs512-key',
+            'use' => 'sig',
+            'alg' => 'RS512',
+        ];
+
+        $result = $this->provider(['keys' => [$ecKey, $rsaRs512Key, $signingKey]])->get(true);
+
+        $this->assertSame(['keys' => [$signingKey]], $result);
+    }
+
+    public function testRejectsJwksWithoutEligibleVerificationKey(): void
+    {
+        $provider = $this->provider(['keys' => [[
+            'kty' => 'RSA',
+            'kid' => 'encryption-key',
+            'use' => 'enc',
+            'alg' => 'RSA-OAEP',
+        ]]]);
+
+        $this->expectException(OidcNetworkException::class);
+        $provider->get(true);
+    }
+
     public function testRejectsDuplicateKeyIds(): void
     {
         $key = $this->validKey('one');
@@ -37,6 +95,16 @@ final class JwksProviderTest extends TestCase
     {
         $key = $this->validKey('one');
         $key['n'] = 'too-short';
+        $provider = $this->provider(['keys' => [$key]]);
+
+        $this->expectException(OidcNetworkException::class);
+        $provider->get(true);
+    }
+
+    public function testRejectsCandidateKeyOpsWithoutVerify(): void
+    {
+        $key = $this->validKey('one');
+        $key['key_ops'] = ['encrypt'];
         $provider = $this->provider(['keys' => [$key]]);
 
         $this->expectException(OidcNetworkException::class);
