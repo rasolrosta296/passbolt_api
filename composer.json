@@ -61,6 +61,7 @@
         "ext-intl": "*",
         "ext-mbstring": "*",
         "ext-gnupg": "*",
+        "ext-gmp": "*",
         "ext-openssl": "*",
         "ext-sodium": "*",
         "ext-pdo": "*",
