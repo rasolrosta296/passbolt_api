@@ -7,6 +7,7 @@ use Cake\TestSuite\TestCase;
 use Passbolt\KeycloakSso\Configuration\KeycloakSsoEnvironment;
 use Passbolt\KeycloakSso\Configuration\OidcConfigurationService;
 use Passbolt\KeycloakSso\Error\Exception\OidcConfigurationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class OidcConfigurationServiceTest extends TestCase
 {
@@ -55,6 +56,50 @@ final class OidcConfigurationServiceTest extends TestCase
 
         $this->expectException(OidcConfigurationException::class);
         (new OidcConfigurationService())->load($environment);
+    }
+
+    public function testIssuerOriginStripsRealmPathAndDefaultPort(): void
+    {
+        $service = new OidcConfigurationService();
+
+        $this->assertSame(
+            'https://keyclock.gobaz.ir',
+            $service->issuerOrigin('https://keyclock.gobaz.ir:443/realms/passbolt')
+        );
+    }
+
+    public function testIssuerOriginPreservesNonDefaultHttpsPort(): void
+    {
+        $service = new OidcConfigurationService();
+
+        $this->assertSame(
+            'https://keyclock.gobaz.ir:8443',
+            $service->issuerOrigin('https://keyclock.gobaz.ir:8443/realms/passbolt')
+        );
+    }
+
+    #[DataProvider('invalidIssuerOriginProvider')]
+    public function testIssuerOriginRejectsInvalidIssuer(string $issuer): void
+    {
+        $this->expectException(OidcConfigurationException::class);
+
+        (new OidcConfigurationService())->issuerOrigin($issuer);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidIssuerOriginProvider(): array
+    {
+        return [
+            'http' => ['http://keyclock.gobaz.ir/realms/passbolt'],
+            'credentials' => ['https://user:password@keyclock.gobaz.ir/realms/passbolt'],
+            'query' => ['https://keyclock.gobaz.ir/realms/passbolt?issuer=evil'],
+            'fragment' => ['https://keyclock.gobaz.ir/realms/passbolt#fragment'],
+            'wildcard' => ['https://*.gobaz.ir/realms/passbolt'],
+            'malformed host' => ['https://key_clock.gobaz.ir/realms/passbolt'],
+            'malformed URL' => ['not-an-issuer'],
+        ];
     }
 
     public function testRejectsInvalidRedirectUri(): void

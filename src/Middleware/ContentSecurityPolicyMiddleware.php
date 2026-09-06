@@ -25,6 +25,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 class ContentSecurityPolicyMiddleware implements MiddlewareInterface
 {
+    public const EXTENSION_ATTRIBUTE = 'passbolt.contentSecurityPolicyExtension';
+
     /**
      * Add Content Security Policy to the response headers
      *
@@ -36,7 +38,8 @@ class ContentSecurityPolicyMiddleware implements MiddlewareInterface
         ServerRequestInterface $request,
         RequestHandlerInterface $handler
     ): ResponseInterface {
-        $response = $handler->handle($request);
+        $extension = new ContentSecurityPolicyExtension();
+        $response = $handler->handle($request->withAttribute(self::EXTENSION_ATTRIBUTE, $extension));
 
         $cspFromConfig = Configure::read('passbolt.security.csp');
 
@@ -66,6 +69,42 @@ class ContentSecurityPolicyMiddleware implements MiddlewareInterface
             throw new InternalErrorException('The CSP policy defined in settings is invalid.');
         }
 
+        $formActionOrigins = $extension->formActionOrigins();
+        $csp = $this->addFormActionOrigins($csp, $formActionOrigins);
+
+        if ($formActionOrigins !== []) {
+            return $response->withHeader('Content-Security-Policy', $csp);
+        }
+
         return $response->withAddedHeader('Content-Security-Policy', $csp);
+    }
+
+    /**
+     * Add validated sources to each form-action directive without changing other directives.
+     *
+     * @param string $csp Existing policy.
+     * @param list<string> $origins Validated HTTPS origins.
+     */
+    private function addFormActionOrigins(string $csp, array $origins): string
+    {
+        if ($origins === []) {
+            return $csp;
+        }
+
+        $directives = array_map('trim', explode(';', $csp));
+        $found = false;
+        foreach ($directives as &$directive) {
+            if (preg_match('/^form-action(?:\s|$)/i', $directive) === 1) {
+                $directive .= ' ' . implode(' ', $origins);
+                $found = true;
+            }
+        }
+        unset($directive);
+
+        if (!$found) {
+            $directives[] = "form-action 'self' " . implode(' ', $origins);
+        }
+
+        return implode('; ', $directives);
     }
 }

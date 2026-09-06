@@ -58,6 +58,22 @@ final class OidcConfigurationService
     }
 
     /**
+     * Return the exact HTTPS origin of a strictly validated issuer.
+     */
+    public function issuerOrigin(string $issuer): string
+    {
+        $this->assertIssuer($issuer);
+        /** @var array{host: string, port?: int} $parts */
+        $parts = parse_url($issuer);
+        $origin = 'https://' . strtolower($parts['host']);
+        if (isset($parts['port']) && $parts['port'] !== 443) {
+            $origin .= ':' . $parts['port'];
+        }
+
+        return $origin;
+    }
+
+    /**
      * Read a required whitespace-free environment value.
      */
     private function required(string|false $value, string $name): string
@@ -81,6 +97,7 @@ final class OidcConfigurationService
         $path = is_array($parts) ? ($parts['path'] ?? '') : '';
         if (
             $parts === false || ($parts['scheme'] ?? null) !== 'https' || empty($parts['host']) ||
+            !$this->isValidIssuerHost($parts['host'] ?? '') ||
             isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) ||
             !preg_match('#^/realms/[A-Za-z0-9._~-]+$#D', $path)
         ) {
@@ -89,6 +106,24 @@ final class OidcConfigurationService
                 ' must be an exact HTTPS Keycloak realm issuer without a trailing slash.'
             );
         }
+    }
+
+    /**
+     * Reject wildcard and malformed issuer hosts.
+     */
+    private function isValidIssuerHost(string $host): bool
+    {
+        if ($host === '' || str_contains($host, '*')) {
+            return false;
+        }
+
+        $ipHost = $host;
+        if (str_starts_with($host, '[') && str_ends_with($host, ']')) {
+            $ipHost = substr($host, 1, -1);
+        }
+
+        return filter_var($ipHost, FILTER_VALIDATE_IP) !== false ||
+            filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
     }
 
     /**
