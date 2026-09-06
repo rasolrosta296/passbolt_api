@@ -8,6 +8,7 @@ use App\Middleware\ContainerInjectorMiddleware;
 use Cake\Http\Exception\BadRequestException;
 use Passbolt\KeycloakSso\Error\Exception\IdentityLinkException;
 use Passbolt\KeycloakSso\Service\Audit\IdentityLinkAuditService;
+use Passbolt\KeycloakSso\Service\Http\ConfiguredIssuerFormActionService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactoryInterface;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCookieService;
 use Psr\Http\Message\ResponseInterface;
@@ -21,6 +22,7 @@ final class IdentityLinkController extends AppController
     public function index(): void
     {
         $this->activeSessionUserId();
+        $this->allowConfiguredIssuerFormAction();
         $this->noStore();
         $this->set('csrfToken', (string)$this->getRequest()->getAttribute('csrfToken'));
         $this->viewBuilder()
@@ -35,6 +37,7 @@ final class IdentityLinkController extends AppController
     public function start(): ResponseInterface
     {
         $userId = $this->activeSessionUserId();
+        $this->allowConfiguredIssuerFormAction();
         $audit = new IdentityLinkAuditService();
         try {
             $audit->linkStarted($userId);
@@ -154,6 +157,12 @@ final class IdentityLinkController extends AppController
                 ->withHeader('Cache-Control', 'no-store')
                 ->withHeader('Pragma', 'no-cache')
         );
+    }
+
+    /** Permit the strictly configured issuer origin only on link initiation. */
+    private function allowConfiguredIssuerFormAction(): void
+    {
+        (new ConfiguredIssuerFormActionService())->allow($this->getRequest());
     }
 
     /** Resolve the plugin-isolated identity service factory. */

@@ -5,11 +5,8 @@ namespace Passbolt\KeycloakSso\Controller\Oidc;
 
 use App\Controller\AppController;
 use App\Middleware\ContainerInjectorMiddleware;
-use App\Middleware\ContentSecurityPolicyExtension;
-use App\Middleware\ContentSecurityPolicyMiddleware;
 use Cake\Event\EventInterface;
-use Cake\Http\Exception\InternalErrorException;
-use Passbolt\KeycloakSso\Configuration\OidcConfigurationService;
+use Passbolt\KeycloakSso\Service\Http\ConfiguredIssuerFormActionService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCookieService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -63,14 +60,7 @@ final class AuthorizationController extends AppController
      */
     private function allowConfiguredIssuerFormAction(): void
     {
-        $configurationService = new OidcConfigurationService();
-        $configuration = $configurationService->load();
-        $extension = $this->getRequest()->getAttribute(ContentSecurityPolicyMiddleware::EXTENSION_ATTRIBUTE);
-        if (!$extension instanceof ContentSecurityPolicyExtension) {
-            throw new InternalErrorException('The request-scoped CSP extension is unavailable.');
-        }
-
-        $extension->addFormActionOrigin($configurationService->issuerOrigin($configuration->issuer));
+        (new ConfiguredIssuerFormActionService())->allow($this->getRequest());
     }
 
     /**
