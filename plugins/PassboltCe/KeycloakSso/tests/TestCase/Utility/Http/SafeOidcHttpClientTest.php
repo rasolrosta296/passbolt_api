@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Test\TestCase\Utility\Http;
 
 use Cake\Http\Client;
+use Cake\Http\Client\AdapterInterface;
 use Cake\Http\Client\Response;
 use Cake\TestSuite\TestCase;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
@@ -11,6 +12,7 @@ use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Test\Utility\StaticHostResolver;
 use Passbolt\KeycloakSso\Utility\Http\SafeOidcHttpClient;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Psr\Http\Message\RequestInterface;
 
 final class SafeOidcHttpClientTest extends TestCase
 {
@@ -96,6 +98,47 @@ final class SafeOidcHttpClientTest extends TestCase
         );
 
         $this->assertSame([], $client->requestJson('GET', $url));
+    }
+
+    public function testPostFormUsesCakeUrlEncodingWithoutInvalidTypeAlias(): void
+    {
+        $url = 'https://keyclock.gobaz.ir/realms/passbolt/protocol/openid-connect/token';
+        $form = [
+            'grant_type' => 'authorization_code',
+            'code' => 'dummy-authorization-code',
+            'redirect_uri' => 'https://passbolt.gobaz.ir/auth/keycloak/callback',
+            'client_id' => 'passbolt',
+            'client_secret' => 'dummy-client-secret',
+            'code_verifier' => 'dummy-pkce-verifier',
+        ];
+        $adapter = new class implements AdapterInterface {
+            public ?RequestInterface $request = null;
+
+            /**
+             * @var array<string, mixed>
+             */
+            public array $options = [];
+
+            public function send(RequestInterface $request, array $options): array
+            {
+                $this->request = $request;
+                $this->options = $options;
+
+                return [new Response(['HTTP/1.1 200 OK', 'Content-Length: 2'], '{}')];
+            }
+        };
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            new Client(['adapter' => $adapter]),
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->assertSame([], $client->requestJson('POST', $url, $form));
+        $this->assertNotNull($adapter->request);
+        $this->assertArrayNotHasKey('type', $adapter->options);
+        $this->assertSame('application/x-www-form-urlencoded', $adapter->request->getHeaderLine('Content-Type'));
+        parse_str((string)$adapter->request->getBody(), $sentForm);
+        $this->assertSame($form, $sentForm);
     }
 
     #[DataProvider('unsafeAddressProvider')]

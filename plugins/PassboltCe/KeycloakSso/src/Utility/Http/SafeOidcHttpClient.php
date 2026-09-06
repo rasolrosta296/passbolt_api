@@ -72,9 +72,6 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
                     },
                 ],
             ];
-            if ($form !== []) {
-                $options['type'] = 'form';
-            }
             $response = match (strtoupper($method)) {
                 'GET' => $client->get($url, [], $options),
                 'POST' => $client->post($url, $form, $options),
