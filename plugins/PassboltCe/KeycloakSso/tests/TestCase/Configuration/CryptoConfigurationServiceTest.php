@@ -64,6 +64,10 @@ final class CryptoConfigurationServiceTest extends TestCase
         return [
             'missing acr' => [[CryptoConfigurationService::RELEASE_ACR => false]],
             'missing active key' => [[CryptoConfigurationService::ACTIVE_KEK_ID => 'absent']],
+            'uppercase active key id' => [[CryptoConfigurationService::ACTIVE_KEK_ID => 'Active']],
+            'uppercase keyring key id' => [[CryptoConfigurationService::KEK_KEYRING => json_encode([
+                'Active' => base64_encode(random_bytes(32)),
+            ], JSON_THROW_ON_ERROR)]],
             'short key' => [[CryptoConfigurationService::KEK_KEYRING => '{"active":"YQ=="}']],
             'invalid amr' => [[CryptoConfigurationService::RELEASE_AMR => '["pwd",1]']],
             'duplicate amr' => [[CryptoConfigurationService::RELEASE_AMR => '["pwd","pwd"]']],

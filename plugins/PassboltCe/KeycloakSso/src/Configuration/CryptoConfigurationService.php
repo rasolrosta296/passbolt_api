@@ -26,7 +26,7 @@ final class CryptoConfigurationService
         $origin = $this->origin();
         $acr = $this->required($read(self::RELEASE_ACR), self::RELEASE_ACR, 255);
         $activeId = $this->required($read(self::ACTIVE_KEK_ID), self::ACTIVE_KEK_ID, 64);
-        if (preg_match('/^[A-Za-z0-9._-]+$/D', $activeId) !== 1) {
+        if (preg_match('/^[a-z0-9._-]+$/D', $activeId) !== 1) {
             throw new OidcConfigurationException(self::ACTIVE_KEK_ID . ' has an invalid format.');
         }
         $keyringJson = $this->required($read(self::KEK_KEYRING), self::KEK_KEYRING, 16_384);
@@ -43,7 +43,7 @@ final class CryptoConfigurationService
         }
         $keys = [];
         foreach ($encodedKeys as $id => $encoded) {
-            if (!is_string($id) || preg_match('/^[A-Za-z0-9._-]{1,64}$/D', $id) !== 1 || !is_string($encoded)) {
+            if (!is_string($id) || preg_match('/^[a-z0-9._-]{1,64}$/D', $id) !== 1 || !is_string($encoded)) {
                 throw new OidcConfigurationException(self::KEK_KEYRING . ' contains an invalid key entry.');
             }
             $key = base64_decode($encoded, true);

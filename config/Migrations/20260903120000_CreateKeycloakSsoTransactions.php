@@ -13,10 +13,14 @@ final class CreateKeycloakSsoTransactions extends AbstractMigration
         $this->table('keycloak_sso_transactions', [
             'id' => false,
             'primary_key' => ['id'],
-            'encoding' => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
+            'encoding' => 'ascii',
+            'collation' => 'ascii_general_ci',
         ])
-            ->addColumn('id', 'uuid', ['null' => false])
+            ->addColumn('id', 'uuid', [
+                'null' => false,
+                'encoding' => 'ascii',
+                'collation' => 'ascii_general_ci',
+            ])
             ->addColumn('state_hash', 'char', [
                 'limit' => 64,
                 'null' => false,
@@ -43,13 +47,18 @@ final class CreateKeycloakSsoTransactions extends AbstractMigration
                 'collation' => 'ascii_bin',
             ])
             ->addColumn('issuer', 'string', ['limit' => 255, 'null' => false])
-            ->addColumn('client_id', 'string', ['limit' => 255, 'null' => false])
+            ->addColumn('client_id', 'string', [
+                'limit' => 255,
+                'null' => false,
+                'encoding' => 'ascii',
+                'collation' => 'ascii_general_ci',
+            ])
             ->addColumn('redirect_uri', 'text', ['null' => false])
             ->addColumn('status', 'string', [
                 'limit' => 32,
                 'null' => false,
                 'encoding' => 'ascii',
-                'collation' => 'ascii_bin',
+                'collation' => 'ascii_general_ci',
             ])
             ->addColumn('result_token_hash', 'char', [
                 'limit' => 64,

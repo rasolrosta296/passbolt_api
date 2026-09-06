@@ -31,7 +31,7 @@ final class CreateKeycloakSsoIdentities extends AbstractMigration
                 'default' => null,
                 'null' => true,
                 'encoding' => 'ascii',
-                'collation' => 'ascii_bin',
+                'collation' => 'ascii_general_ci',
             ])
             ->addIndex(['purpose', 'status', 'result_expires'], [
                 'name' => 'idx_keycloak_sso_transactions_result_purpose',

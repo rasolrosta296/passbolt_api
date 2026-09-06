@@ -11,8 +11,8 @@ final class CreateKeycloakSsoCryptoEnrollments extends AbstractMigration
     public function change(): void
     {
         $uuid = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_general_ci'];
-        $asciiText = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_bin'];
-        $asciiNullableText = ['null' => true, 'encoding' => 'ascii', 'collation' => 'ascii_bin'];
+        $asciiText = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_general_ci'];
+        $asciiNullableText = ['null' => true, 'encoding' => 'ascii', 'collation' => 'ascii_general_ci'];
 
         $this->table('keycloak_sso_crypto_enrollments', [
             'id' => false,
@@ -74,7 +74,7 @@ final class CreateKeycloakSsoCryptoEnrollments extends AbstractMigration
                 'limit' => 64,
                 'null' => true,
                 'encoding' => 'ascii',
-                'collation' => 'ascii_bin',
+                'collation' => 'ascii_general_ci',
             ])
             ->addColumn('status', 'string', ['limit' => 32] + $asciiText)
             ->addColumn('expires', 'datetime', ['null' => false])
