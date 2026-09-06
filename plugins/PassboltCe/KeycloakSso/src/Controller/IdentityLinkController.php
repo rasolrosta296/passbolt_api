@@ -75,31 +75,47 @@ final class IdentityLinkController extends AppController
     /**
      * Atomically consume the fresh proof after explicit user confirmation.
      */
-    public function confirmPost(): void
+    public function confirmPost(): ResponseInterface
     {
         $userId = $this->activeSessionUserId();
         $this->requireConfirmation('link_keycloak_identity');
         $token = $this->validatedLinkResultToken();
         try {
             $this->factory()->confirmer()->confirm($token, $userId);
-            $this->setResponse(
-                $this->getResponse()->withExpiredCookie(
-                    OidcCookieService::expired(OidcCookieService::LINK_RESULT_COOKIE)
-                )
-            );
-            $this->noStore();
-            $this->success(
-                __('The Keycloak identity was linked. Passbolt cryptographic authentication remains required.')
-            );
+            $resultRoute = '/auth/keycloak/link/result';
         } catch (Throwable) {
-            $this->setResponse(
-                $this->getResponse()->withExpiredCookie(
-                    OidcCookieService::expired(OidcCookieService::LINK_RESULT_COOKIE)
-                )
-            );
-            $this->noStore();
-            $this->error(__('The Keycloak identity could not be linked.'));
+            $resultRoute = '/auth/keycloak/link/error';
         }
+        $this->setResponse(
+            $this->getResponse()->withExpiredCookie(
+                OidcCookieService::expired(OidcCookieService::LINK_RESULT_COOKIE)
+            )
+        );
+        $this->noStore();
+
+        return $this->redirect($resultRoute, 303);
+    }
+
+    /** Render a generic successful identity-link result without inspecting the consumed proof. */
+    public function result(): void
+    {
+        $this->activeSessionUserId();
+        $this->noStore();
+        $this->viewBuilder()
+            ->setLayout('default')
+            ->setTemplatePath('IdentityLink')
+            ->setTemplate('result');
+    }
+
+    /** Render a generic identity-link failure without exposing the terminal failure reason. */
+    public function failure(): void
+    {
+        $this->activeSessionUserId();
+        $this->noStore();
+        $this->viewBuilder()
+            ->setLayout('default')
+            ->setTemplatePath('IdentityLink')
+            ->setTemplate('failure');
     }
 
     /**
@@ -108,6 +124,7 @@ final class IdentityLinkController extends AppController
     public function unlink(): void
     {
         $userId = $this->activeSessionUserId();
+        $this->assertJson();
         $this->requireConfirmation('unlink_keycloak_identity');
         try {
             $clientEnrollmentIds = $this->factory()->unlinker()->unlink($userId);

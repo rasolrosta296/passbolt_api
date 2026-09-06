@@ -90,6 +90,21 @@ final class IdentityLinkCspTest extends KeycloakSsoIntegrationTestCase
 
         $this->post('/auth/keycloak/link/confirm', ['confirmation' => 'link_keycloak_identity']);
 
+        $this->assertResponseCode(303);
+        $this->assertRedirect('/auth/keycloak/link/error');
+        $this->assertIssuerNotAllowed();
+    }
+
+    public function testIdentityLinkResultPagesDoNotAllowIssuerOrigin(): void
+    {
+        $this->logInAs($this->activeUser());
+
+        $this->get('/auth/keycloak/link/result');
+        $this->assertResponseOk();
+        $this->assertIssuerNotAllowed();
+
+        $this->get('/auth/keycloak/link/error');
+        $this->assertResponseOk();
         $this->assertIssuerNotAllowed();
     }
 
@@ -97,8 +112,9 @@ final class IdentityLinkCspTest extends KeycloakSsoIntegrationTestCase
     {
         $this->logInAs($this->activeUser());
 
-        $this->post('/auth/keycloak/unlink', ['confirmation' => 'unlink_keycloak_identity']);
+        $this->postJson('/auth/keycloak/unlink.json', ['confirmation' => 'unlink_keycloak_identity']);
 
+        $this->assertResponseCode(400);
         $this->assertIssuerNotAllowed();
     }
 
