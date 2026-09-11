@@ -84,6 +84,130 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
         ]);
     }
 
+    public function testCompletedOidcCapabilityCannotReleaseForDisabledUser(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()->get('Users')->updateAll(
+            ['disabled' => DateTime::now()],
+            ['id' => $fixture['user_id']]
+        );
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A disabled Passbolt user must not receive a server share.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('rotation_user_unavailable', $exception->reasonCode());
+        }
+    }
+
+    public function testCompletedOidcCapabilityCannotReleaseForDeletedUser(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()->get('Users')->updateAll(
+            ['deleted' => true],
+            ['id' => $fixture['user_id']]
+        );
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A deleted Passbolt user must not receive a server share.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('rotation_user_unavailable', $exception->reasonCode());
+        }
+    }
+
+    public function testTamperedPersistedServerShareFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoCryptoEnrollments')
+            ->updateAll(
+                ['server_share_ciphertext' => base64_encode(random_bytes(48))],
+                ['id' => $fixture['enrollment_id']]
+            );
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A tampered server share must not be released.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('server_share_authentication_failed', $exception->reasonCode());
+        }
+    }
+
+    public function testWrongProfileSignatureFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        [$wrongSigningKey] = $this->signingKey();
+        $input = $this->validReleaseInput($fixture);
+        $input['signature'] = $this->sign($wrongSigningKey, $fixture['release_transcript']);
+
+        try {
+            $fixture['service']->release($fixture['token'], $input);
+            $this->fail('A release signed by another profile key must not succeed.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('profile_signature_invalid', $exception->reasonCode());
+        }
+    }
+
+    public function testWrongReleaseRequestIdentifierFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        $input = $this->validReleaseInput($fixture);
+        $input['request_id'] = UuidFactory::uuid();
+
+        try {
+            $fixture['service']->release($fixture['token'], $input);
+            $this->fail('A substituted release request identifier must not succeed.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('signed_release_request_invalid', $exception->reasonCode());
+        }
+    }
+
+    public function testTamperedClientNonceBindingFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests')
+            ->updateAll(['client_nonce_hash' => hash('sha256', random_bytes(32))], ['id' => $fixture['request_id']]);
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A release with a substituted nonce binding must not succeed.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('release_request_invalid', $exception->reasonCode());
+        }
+    }
+
+    public function testTamperedProtectedReleaseRequestFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests')
+            ->updateAll(['request_ciphertext' => base64_encode(random_bytes(64))], ['id' => $fixture['request_id']]);
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A tampered protected release request must not succeed.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('release_failed', $exception->reasonCode());
+        }
+    }
+
+    public function testRequestBoundToAnotherEnrollmentFailsClosed(): void
+    {
+        $fixture = $this->releaseFixture();
+        TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests')
+            ->updateAll(['enrollment_id' => UuidFactory::uuid()], ['id' => $fixture['request_id']]);
+
+        try {
+            $fixture['service']->release($fixture['token'], $this->validReleaseInput($fixture));
+            $this->fail('A release request rebound to another enrollment must not succeed.');
+        } catch (CryptoSsoException $exception) {
+            $this->assertSame('release_owner_unavailable', $exception->reasonCode());
+        }
+    }
+
     /** @return array<string, mixed> */
     private function releaseFixture(): array
     {
@@ -222,6 +346,7 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
             ),
             'token' => $token,
             'request_id' => $requestId,
+            'enrollment_id' => $enrollmentId,
             'release_transcript' => $releaseTranscript,
             'signing_key' => $signingKey,
             'server_share' => $serverShare,
@@ -229,6 +354,18 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
             'hpke_private_key' => $hpkePrivateKey,
             'context' => $context,
             'user_id' => $user->id,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $fixture
+     * @return array{request_id: string, signature: string}
+     */
+    private function validReleaseInput(array $fixture): array
+    {
+        return [
+            'request_id' => $fixture['request_id'],
+            'signature' => $this->sign($fixture['signing_key'], $fixture['release_transcript']),
         ];
     }
 
@@ -245,8 +382,8 @@ final class CryptoReleaseAuthenticationBoundaryTest extends KeycloakSsoIntegrati
             'ext' => true,
             'key_ops' => ['verify'],
             'kty' => 'EC',
-            'x' => $this->base64Url($details['ec']['x']),
-            'y' => $this->base64Url($details['ec']['y']),
+            'x' => $this->base64Url(str_pad($details['ec']['x'], 32, "\0", STR_PAD_LEFT)),
+            'y' => $this->base64Url(str_pad($details['ec']['y'], 32, "\0", STR_PAD_LEFT)),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         return [$privateKey, $jwk];

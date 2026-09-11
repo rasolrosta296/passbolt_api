@@ -70,7 +70,27 @@ final class CryptoOidcProofServiceTest extends KeycloakSsoIntegrationTestCase
         );
     }
 
-    public function testRejectsWrongAcrAndMissingRequiredAmr(): void
+    public function testRejectsWrongAcr(): void
+    {
+        [$user, $transaction] = $this->pendingRelease();
+        $this->expectException(OidcValidationException::class);
+        (new CryptoOidcProofService($this->crypto()))->verify(
+            $transaction,
+            new ValidatedOidcIdentity('immutable-subject', $user->username, time(), 'wrong-acr')
+        );
+    }
+
+    public function testRejectsMissingAcr(): void
+    {
+        [$user, $transaction] = $this->pendingRelease();
+        $this->expectException(OidcValidationException::class);
+        (new CryptoOidcProofService($this->crypto()))->verify(
+            $transaction,
+            new ValidatedOidcIdentity('immutable-subject', $user->username, time())
+        );
+    }
+
+    public function testRejectsMissingRequiredAmr(): void
     {
         [$user, $transaction] = $this->pendingRelease();
         $configuration = new CryptoConfigurationDto(
@@ -83,21 +103,50 @@ final class CryptoOidcProofServiceTest extends KeycloakSsoIntegrationTestCase
         $this->expectException(OidcValidationException::class);
         (new CryptoOidcProofService($configuration))->verify(
             $transaction,
-            new ValidatedOidcIdentity('immutable-subject', $user->username, time(), 'wrong-acr', ['pwd'])
+            new ValidatedOidcIdentity('immutable-subject', $user->username, time(), 'urn:keycloak:acr:mfa', ['pwd'])
         );
     }
 
-    public function testRejectsSubjectChangeAndDisabledUser(): void
+    public function testRejectsSubjectChange(): void
     {
         [$user, $transaction] = $this->pendingRelease();
-        TableRegistry::getTableLocator()->get('Users')->updateAll(['disabled' => DateTime::now()], [
-            'id' => $user->id,
-        ]);
         $this->expectException(OidcValidationException::class);
         (new CryptoOidcProofService($this->crypto()))->verify(
             $transaction,
             new ValidatedOidcIdentity('changed-subject', $user->username, time(), 'urn:keycloak:acr:mfa')
         );
+    }
+
+    public function testRejectsDisabledUserWithMatchingIdentity(): void
+    {
+        [$user, $transaction] = $this->pendingRelease();
+        TableRegistry::getTableLocator()->get('Users')->updateAll(['disabled' => DateTime::now()], [
+            'id' => $user->id,
+        ]);
+        try {
+            (new CryptoOidcProofService($this->crypto()))->verify(
+                $transaction,
+                new ValidatedOidcIdentity('immutable-subject', $user->username, time(), 'urn:keycloak:acr:mfa')
+            );
+            $this->fail('A disabled Passbolt user must not complete a cryptographic OIDC proof.');
+        } catch (OidcValidationException $exception) {
+            $this->assertSame('crypto_user_unavailable', $exception->reasonCode());
+        }
+    }
+
+    public function testRejectsDeletedUserWithMatchingIdentity(): void
+    {
+        [$user, $transaction] = $this->pendingRelease();
+        TableRegistry::getTableLocator()->get('Users')->updateAll(['deleted' => true], ['id' => $user->id]);
+        try {
+            (new CryptoOidcProofService($this->crypto()))->verify(
+                $transaction,
+                new ValidatedOidcIdentity('immutable-subject', $user->username, time(), 'urn:keycloak:acr:mfa')
+            );
+            $this->fail('A deleted Passbolt user must not complete a cryptographic OIDC proof.');
+        } catch (OidcValidationException $exception) {
+            $this->assertSame('crypto_user_unavailable', $exception->reasonCode());
+        }
     }
 
     /** @return array{0: User, 1: KeycloakSsoTransaction, 2: \Passbolt\KeycloakSso\Model\Dto\CreatedOidcTransaction} */

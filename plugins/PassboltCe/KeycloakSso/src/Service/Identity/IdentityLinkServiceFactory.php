@@ -59,6 +59,12 @@ final class IdentityLinkServiceFactory implements IdentityLinkServiceFactoryInte
         return new UnlinkIdentityService($this->configuration()->issuer, new IdentityLinkAuditService());
     }
 
+    /** Build the current-user identity-link status service. */
+    public function status(): IdentityLinkStatusService
+    {
+        return new IdentityLinkStatusService($this->configuration()->issuer);
+    }
+
     /** Build the server-side Passbolt session verifier. */
     public function sessions(): AuthenticatedPassboltSessionService
     {

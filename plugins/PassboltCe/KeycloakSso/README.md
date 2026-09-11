@@ -10,7 +10,8 @@ The frozen wire protocol is specified in
 [`docs/CRYPTOGRAPHIC_SSO_PROTOCOL_V1.md`](docs/CRYPTOGRAPHIC_SSO_PROTOCOL_V1.md).
 Operators must also read [`docs/OPERATIONS.md`](docs/OPERATIONS.md),
 [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md), and
-[`docs/DEPENDENCY_RISK.md`](docs/DEPENDENCY_RISK.md) before enabling the
+[`docs/DEPENDENCY_RISK.md`](docs/DEPENDENCY_RISK.md), then complete
+[`docs/LIVE_RELEASE_GATE.md`](docs/LIVE_RELEASE_GATE.md) before enabling the
 feature.
 
 ## Supported scope

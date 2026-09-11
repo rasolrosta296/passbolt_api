@@ -14,6 +14,9 @@ interface IdentityLinkServiceFactoryInterface
     /** Build the current-user unlink service. */
     public function unlinker(): UnlinkIdentityService;
 
+    /** Build the current-user identity-link status service. */
+    public function status(): IdentityLinkStatusService;
+
     /** Build the Passbolt server-session verifier. */
     public function sessions(): AuthenticatedPassboltSessionService;
 }

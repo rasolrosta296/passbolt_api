@@ -21,6 +21,8 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['GET']);
     $routes->connect('/link/start', ['controller' => 'IdentityLink', 'action' => 'start'])
         ->setMethods(['POST']);
+    $routes->connect('/link/status', ['controller' => 'IdentityLink', 'action' => 'status'])
+        ->setMethods(['GET']);
     $routes->connect('/link/confirm', ['controller' => 'IdentityLink', 'action' => 'confirm'])
         ->setMethods(['GET']);
     $routes->connect('/link/confirm', ['controller' => 'IdentityLink', 'action' => 'confirmPost'])

@@ -31,6 +31,7 @@ final class CryptoSsoController extends AppController
     public function startEnrollment(): void
     {
         $userId = $this->activeUserId();
+        $this->assertJson();
         $audit = new CryptoSsoAuditService();
         try {
             $request = $this->factory()->authorization()->startEnrollment($userId);
@@ -57,6 +58,7 @@ final class CryptoSsoController extends AppController
     public function enroll(): void
     {
         $userId = $this->activeUserId();
+        $this->assertJson();
         $token = $this->cookie(OidcCookieService::CRYPTO_RESULT_COOKIE);
         $audit = new CryptoSsoAuditService();
         try {
@@ -82,6 +84,7 @@ final class CryptoSsoController extends AppController
      */
     public function startLogin(): void
     {
+        $this->assertJson();
         $audit = new CryptoSsoAuditService();
         try {
             $request = $this->factory()->authorization()->startRelease((array)$this->getRequest()->getData());
@@ -104,6 +107,7 @@ final class CryptoSsoController extends AppController
      */
     public function release(): void
     {
+        $this->assertJson();
         $token = $this->cookie(OidcCookieService::CRYPTO_RESULT_COOKIE);
         $audit = new CryptoSsoAuditService();
         try {
@@ -124,6 +128,7 @@ final class CryptoSsoController extends AppController
     public function startRotation(): void
     {
         $userId = $this->activeUserId();
+        $this->assertJson();
         $audit = new CryptoSsoAuditService();
         try {
             $result = $this->factory()->rotationBarrier()->begin($userId);
@@ -209,6 +214,7 @@ final class CryptoSsoController extends AppController
     private function finishRotation(string $outcome, string $auditEvent): void
     {
         $userId = $this->activeUserId();
+        $this->assertJson();
         $audit = new CryptoSsoAuditService();
         try {
             $capability = $this->getRequest()->getData('rotation_capability');

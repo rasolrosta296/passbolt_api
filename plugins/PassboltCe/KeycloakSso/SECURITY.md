@@ -111,8 +111,15 @@ stage completes, use a dedicated extension-owned Quick Access form, and do not
 traverse page/content-script messaging, `passbolt.passphrase.request`, or
 remember-passphrase storage. The form clears its controlled value before the
 asynchronous enrollment operation proceeds.
-Passphrases recovered during login exist only in extension background memory,
-are passed directly to unchanged GPGAuth, and are never persisted.
+Passphrases recovered during login remain in the extension background context
+through unchanged GPGAuth. They are not written to Passbolt's passphrase
+storage unless final GPGAuth succeeds. After that proof succeeds, the extension
+uses the same standard 60-second `browser.storage.session` cache as native
+Passbolt login with `rememberMe=false`, before invoking post-login setup. It
+never selects session-long remember-me storage. The cache is cleared by the
+standard Passbolt alarm/logout behavior; browser suspension can delay alarm
+delivery, so this is a short-lived profile-session cache rather than a strict
+cryptographic erasure deadline.
 
 Passphrase rotation is fail closed: after the existing client validates and
 prepares the key update, the plugin locks the current user's database row and

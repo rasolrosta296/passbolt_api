@@ -57,6 +57,17 @@ final class IdentityLinkController extends AppController
         }
     }
 
+    /** Return only whether the current user has an identity for the configured issuer. */
+    public function status(): void
+    {
+        $userId = $this->activeSessionUserId();
+        $this->assertJson();
+        $this->noStore();
+        $this->success(__('Keycloak identity-link status.'), [
+            'linked' => $this->factory()->status()->isLinked($userId),
+        ]);
+    }
+
     /**
      * Render explicit confirmation after a fresh, purpose-bound OIDC callback.
      */
@@ -93,7 +104,9 @@ final class IdentityLinkController extends AppController
         );
         $this->noStore();
 
-        return $this->redirect($resultRoute, 303);
+        return $this->getResponse()
+            ->withStatus(303)
+            ->withHeader('Location', $resultRoute);
     }
 
     /** Render a generic successful identity-link result without inspecting the consumed proof. */
