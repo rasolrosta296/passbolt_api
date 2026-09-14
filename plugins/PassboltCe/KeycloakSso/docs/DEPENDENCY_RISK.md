@@ -25,34 +25,32 @@ review and refreshed cross-language vectors.
 ## Release-candidate audit snapshot
 
 Audited with Node.js 22.23.1, npm 10.9.8, and the public npm advisory
-service. `composer audit` reported no known advisories. Neither `@hpke/core`,
-`@hpke/common`, `cborg`, `paragonie/hpke`, nor `spomky-labs/cbor-php` was
-identified by these audits.
+service. The DDEV `composer audit --locked` reported no known advisories after
+the package-scoped update of `composer/composer` from 2.10.2 to 2.10.3.
+Neither `@hpke/core`, `@hpke/common`, `cborg`, `paragonie/hpke`, nor
+`spomky-labs/cbor-php` was identified by these audits; their locked versions
+and the approved protocol suite are unchanged.
 
-The extension production dependency graph has three moderate findings:
+The extension production dependency audit now reports zero findings. Two
+targeted changes removed the previous KDBX import/export dependency findings:
 
-| Dependency | Direct | Locked | Production/reachability | Remediation disposition |
-| --- | --- | --- | --- | --- |
-| `@xmldom/xmldom` | No; via `kdbxweb` | 0.8.14 | Bundled for KDBX XML handling; not reachable from Keycloak SSO. GHSA-6gmq-8vp8-gcm6 applies. | npm proposes changing `kdbxweb`; evaluate with upstream KDBX tests instead of applying automatically. |
-| `fflate` | No | 0.7.4 | Bundled archive parser; not reachable from Keycloak SSO. GHSA-px8p-9vwx-vf98 applies to malformed ZIP64 input. | A patched release exists; update through normal upstream dependency review. |
-| `kdbxweb` | Yes | 2.1.1 | Bundled for KeePass import/export; not reachable from Keycloak SSO, but it pulls the vulnerable XML serializer. | npm's offered `2.1.0` change is not an acceptable blind audit fix; coordinate an upstream-compatible remediation. |
+| Dependency | Direct | Locked | Remediation and upstream impact |
+| --- | --- | --- | --- |
+| `@xmldom/xmldom` | No; via `kdbxweb` | 0.8.15 | Advance the existing upstream override by one patch version. Keep this as a single-line, independently droppable upstream delta until upstream adopts a patched release. |
+| `fflate` | No; via `kdbxweb` | 0.7.5 | Update only the lock entry within upstream `kdbxweb`'s existing `^0.7.1` range; no manifest override or `kdbxweb` change. |
+| `kdbxweb` | Yes | 2.1.1 | Unchanged. Its import/export tests and the full extension suite pass with the patched transitive packages. |
 
-The extension's full graph additionally reports five high and one moderate
-development/build findings (`browserslist` 4.28.1, `fast-uri` 3.1.5,
-`image-size` 2.0.2, `addons-linter` 10.7.0, `web-ext` 10.4.0, and
-`@humanfs/node` 0.16.7). They are not production runtime dependencies or SSO
-runtime paths, but can affect release tooling. The offered fixes include
-unrelated or backward dependency changes and were not applied.
-
-The styleguide production dependency audit is clean. Its full development/build
-graph reports two high, two moderate, and one low finding: `browserslist`
-4.28.2, `fast-uri` 3.1.5, `@humanfs/node` 0.16.7, `qs` 6.15.3, and
-`postcss-selector-parser` 7.1.1. None is an SSO runtime dependency; they remain
-build-chain risks for upstream remediation.
-
-These findings are not described as harmless merely because the Keycloak SSO
-path does not reach them. The three extension production findings require an
-explicit release risk acceptance or upstream remediation before production.
+The extension's full dependency audit still reports seven high and four
+moderate development/build findings: `@humanfs/node`, `addons-linter`,
+`adm-zip`, `baseline-browser-mapping`, `browserslist`, `fast-uri`,
+`firefox-profile`, `image-size`, `js-yaml`, `svgo`, and `web-ext`. The
+styleguide production audit is clean; its full development/build audit reports
+four high, three moderate, and two low findings: `@humanfs/node`,
+`baseline-browser-mapping`, `browserslist`, `fast-uri`, `joi`, `js-yaml`,
+`postcss-selector-parser`, `qs`, and `svgo`. These tools are outside the
+runtime SSO path, but can affect release artifacts and remain upstream build
+chain risks requiring separate review. No broad audit-fix or unrelated package
+upgrade was applied.
 
 ## Classification rules
 
