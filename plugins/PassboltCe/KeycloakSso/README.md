@@ -38,7 +38,7 @@ automatic account creation or recovery are not supported.
    source control and application logs.
 5. Configure the Keycloak confidential client as described below.
 6. Build the browser extension against the matching styleguide release
-   candidate using Node 22.23.1 and npm 10.9.8, then build the production MV3
+   candidate using Node 22.23.1 and npm 10.9.2, then build the production MV3
    target with `npm run build:chromium-mv3`.
 7. Enable the feature for a non-production cohort, verify normal login first,
    then exercise link, enrollment, SSO login, unlink, and passphrase rotation.

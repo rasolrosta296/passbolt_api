@@ -24,7 +24,7 @@ review and refreshed cross-language vectors.
 
 ## Release-candidate audit snapshot
 
-Audited with Node.js 22.23.1, npm 10.9.8, and the public npm advisory
+Audited with Node.js 22.23.1, npm 10.9.2, and the public npm advisory
 service. The DDEV `composer audit --locked` reported no known advisories after
 the package-scoped update of `composer/composer` from 2.10.2 to 2.10.3.
 Neither `@hpke/core`, `@hpke/common`, `cborg`, `paragonie/hpke`, nor
