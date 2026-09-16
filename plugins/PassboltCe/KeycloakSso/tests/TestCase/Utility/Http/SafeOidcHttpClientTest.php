@@ -11,6 +11,7 @@ use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Test\Utility\StaticHostResolver;
 use Passbolt\KeycloakSso\Utility\Http\SafeOidcHttpClient;
+use Passbolt\KeycloakSso\Utility\Http\SystemHostResolver;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Http\Message\RequestInterface;
 
@@ -38,6 +39,33 @@ final class SafeOidcHttpClientTest extends TestCase
 
         $this->expectException(OidcNetworkException::class);
         $client->assertSafeUrl('https://evil.example/jwks');
+    }
+
+    public function testAcceptsPublicAddressReturnedBySystemResolverFallback(): void
+    {
+        $resolver = new SystemHostResolver(
+            static fn (string $_host, int $_type): array => [],
+            static fn (string $_host): array => ['198.51.100.20']
+        );
+        $client = new SafeOidcHttpClient($this->configuration(), null, $resolver);
+
+        $this->assertSame(
+            ['198.51.100.20'],
+            $client->assertSafeUrl('https://keyclock.gobaz.ir/realms/passbolt')
+        );
+    }
+
+    public function testRejectsPrivateAddressReturnedBySystemResolverFallback(): void
+    {
+        $resolver = new SystemHostResolver(
+            static fn (string $_host, int $_type): array => [],
+            static fn (string $_host): array => ['127.0.0.1']
+        );
+        $client = new SafeOidcHttpClient($this->configuration(), null, $resolver);
+
+        $this->expectException(OidcNetworkException::class);
+        $this->expectExceptionMessage('The OIDC endpoint resolves to a prohibited network.');
+        $client->assertSafeUrl('https://keyclock.gobaz.ir/realms/passbolt');
     }
 
     public function testRejectsRedirectResponse(): void
