@@ -1,4 +1,4 @@
-ARG PASSBOLT_BASE_IMAGE="passbolt/passbolt:5.15.0-1-ce-non-root@sha256:da6ae87ebcc5b46c09f277d9fe2290ac8680b25aa7ebf46eeeba4df387a31bde"
+ARG PASSBOLT_BASE_IMAGE="passbolt/passbolt:5.15.0-1-ce@sha256:4006aec1bb8756ef921491b2a703dab6fbe10e0df38cb0ffd3e13b138bd7d63f"
 ARG COMPOSER_IMAGE="composer:2.8.12@sha256:5248900ab8b5f7f880c2d62180e40960cd87f60149ec9a1abfd62ac72a02577c"
 
 FROM ${COMPOSER_IMAGE} AS composer-bin
@@ -69,8 +69,6 @@ RUN chown -R root:www-data /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSs
     && find /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso -type f -exec chmod 0640 {} +
 
 WORKDIR /usr/share/php/passbolt
-
-USER 33:33
 
 RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);' \
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(class_exists("Passbolt\\KeycloakSso\\KeycloakSsoPlugin") ? 0 : 1);' \
