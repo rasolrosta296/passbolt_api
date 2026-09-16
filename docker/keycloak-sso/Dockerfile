@@ -22,7 +22,7 @@ COPY src ./src
 COPY plugins ./plugins
 
 RUN composer install \
-        --classmap-authoritative \
+        --optimize-autoloader \
         --no-dev \
         --no-interaction \
         --no-progress \
@@ -72,5 +72,6 @@ WORKDIR /usr/share/php/passbolt
 
 RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);' \
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(class_exists("Passbolt\\KeycloakSso\\KeycloakSsoPlugin") ? 0 : 1);' \
+    && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(is_a("Cake\\ORM\\Query\\SelectQuery", "Cake\\ORM\\Query", true) ? 0 : 1);' \
     && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \
     && test ! -e /usr/share/php/passbolt/vendor/phpunit

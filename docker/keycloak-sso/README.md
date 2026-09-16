@@ -14,6 +14,11 @@ with the matching upstream Passbolt release. The added GMP Debian package is
 also pinned to the version shipped for that base; it must be reviewed and
 updated with the base image rather than silently drifting between rebuilds.
 
+Composer's optimized PSR-4 fallback must remain enabled. Do not generate an
+authoritative classmap: CakePHP's backwards-compatible `Cake\ORM\Query`
+alias is loaded through PSR-4 fallback and is required by the Passbolt 5.15
+source. The image build verifies this compatibility alias before publishing.
+
 ## Build
 
 From the API repository root:
