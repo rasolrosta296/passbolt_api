@@ -47,7 +47,9 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 USER 0
 
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends php8.4-gmp=8.4.24-1~deb13u1 \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bash=5.2.37-2+b9 \
+        php8.4-gmp=8.4.24-1~deb13u1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=vendor-builder /build/vendor /usr/share/php/passbolt/vendor
@@ -72,4 +74,5 @@ USER 33:33
 
 RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);' \
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(class_exists("Passbolt\\KeycloakSso\\KeycloakSsoPlugin") ? 0 : 1);' \
+    && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \
     && test ! -e /usr/share/php/passbolt/vendor/phpunit
