@@ -48,6 +48,8 @@ abstract class KeycloakSsoIntegrationTestCase extends AppIntegrationTestCase
     private function clearKeycloakSsoTables(): void
     {
         $locator = TableRegistry::getTableLocator();
+        $locator->get('Passbolt/KeycloakSso.KeycloakSsoProvisioningEvents')->deleteAll([]);
+        $locator->get('Passbolt/KeycloakSso.KeycloakSsoProvisionedUsers')->deleteAll([]);
         $locator->get('Passbolt/KeycloakSso.KeycloakSsoRotationBarriers')->deleteAll([]);
         $locator->get('Passbolt/KeycloakSso.KeycloakSsoTransactions')->deleteAll([]);
         $locator->get('Passbolt/KeycloakSso.KeycloakSsoCryptoRequests')->deleteAll([]);

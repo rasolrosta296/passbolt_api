@@ -8,7 +8,7 @@ use Passbolt\KeycloakSso\Utility\Http\OidcHttpClientInterface;
 
 final class FailingOidcHttpClient implements OidcHttpClientInterface
 {
-    public function requestJson(string $method, string $url, array $form = []): array
+    public function requestJson(string $method, string $url, array $form = [], array $headers = []): array
     {
         throw new OidcNetworkException('The OIDC provider request failed.');
     }

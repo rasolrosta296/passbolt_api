@@ -169,6 +169,52 @@ final class SafeOidcHttpClientTest extends TestCase
         $this->assertSame($form, $sentForm);
     }
 
+    public function testAllowsOnlyWellFormedBearerAuthorizationHeader(): void
+    {
+        $url = 'https://keyclock.gobaz.ir/admin/realms/passbolt/admin-events';
+        $response = new Response(['HTTP/1.1 200 OK', 'Content-Length: 2'], '[]');
+        $cakeClient = $this->createMock(Client::class);
+        $cakeClient->expects($this->once())
+            ->method('get')
+            ->with($url, [], $this->callback(static function (array $options): bool {
+                return ($options['headers']['Authorization'] ?? null) === 'Bearer dummy-token';
+            }))
+            ->willReturn($response);
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            $cakeClient,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->assertSame([], $client->requestJson('GET', $url, [], [
+            'Authorization' => 'Bearer dummy-token',
+        ]));
+    }
+
+    #[DataProvider('invalidSensitiveHeaderProvider')]
+    public function testRejectsUnapprovedOrMalformedSensitiveHeaders(array $headers): void
+    {
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            null,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        $this->expectException(OidcNetworkException::class);
+        $client->requestJson('GET', 'https://keyclock.gobaz.ir/admin/realms/passbolt/users', [], $headers);
+    }
+
+    public static function invalidSensitiveHeaderProvider(): array
+    {
+        return [
+            'unexpected header' => [['X-Forwarded-Host' => 'evil.example']],
+            'basic authentication' => [['Authorization' => 'Basic Zm9vOmJhcg==']],
+            'line break' => [['Authorization' => "Bearer token\r\nX-Evil: yes"]],
+            'empty token' => [['Authorization' => 'Bearer ']],
+            'non bearer-token character' => [['Authorization' => 'Bearer token:value']],
+        ];
+    }
+
     #[DataProvider('unsafeAddressProvider')]
     public function testRejectsUnsafeDestination(string $address): void
     {

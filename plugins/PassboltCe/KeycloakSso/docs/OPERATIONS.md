@@ -12,6 +12,7 @@ Migrations must run in timestamp order:
 2. `20260904120000_CreateKeycloakSsoIdentities`
 3. `20260905120000_CreateKeycloakSsoCryptoEnrollments`
 4. `20260906120000_CreateKeycloakSsoRotationBarriers`
+5. `20260926120000_CreateKeycloakSsoProvisioning`
 
 After applying them, verify the four plugin table groups, unique indexes, and
 foreign keys described in the migration source. UUID columns use Passbolt's
@@ -36,6 +37,10 @@ rotation transactions serialize on the same user row.
 Fresh install and upgrade use the same migrations. Upgrade does not create an
 identity or enrollment for any existing user and does not rewrite users,
 resources, OpenPGP keys, or secrets.
+
+Optional Keycloak administrator-created user provisioning is documented in
+`docs/USER_PROVISIONING.md`. It is disabled unless its separate environment
+flag and read-only service-account credentials are configured.
 
 ### Rollback warning
 

@@ -9,8 +9,10 @@ interface OidcHttpClientInterface
 {
     /**
      * @param array<string, string> $form
-     * @return array<string, mixed>
+     * @param array<string, string> $headers
+     * @return array<mixed>
      */
     public function requestJson(string $method, string $url, #[SensitiveParameter]
-    array $form = []): array;
+    array $form = [], #[SensitiveParameter]
+    array $headers = []): array;
 }

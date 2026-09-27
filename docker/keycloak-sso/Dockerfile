@@ -63,6 +63,7 @@ COPY --chown=root:www-data --chmod=0640 config/Migrations/20260903120000_CreateK
 COPY --chown=root:www-data --chmod=0640 config/Migrations/20260904120000_CreateKeycloakSsoIdentities.php /etc/passbolt/Migrations/
 COPY --chown=root:www-data --chmod=0640 config/Migrations/20260905120000_CreateKeycloakSsoCryptoEnrollments.php /etc/passbolt/Migrations/
 COPY --chown=root:www-data --chmod=0640 config/Migrations/20260906120000_CreateKeycloakSsoRotationBarriers.php /etc/passbolt/Migrations/
+COPY --chown=root:www-data --chmod=0640 config/Migrations/20260926120000_CreateKeycloakSsoProvisioning.php /etc/passbolt/Migrations/
 
 RUN chown -R root:www-data /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso \
     && find /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso -type d -exec chmod 0750 {} + \

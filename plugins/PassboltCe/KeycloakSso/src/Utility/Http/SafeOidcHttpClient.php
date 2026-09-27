@@ -29,11 +29,15 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
     /**
      * Retrieve a size-bounded JSON response without redirects.
      *
-     * @return array<string, mixed>
+     * @param array<string, string> $form Form fields for a POST request.
+     * @param array<string, string> $headers Restricted sensitive request headers.
+     * @return array<mixed>
      */
     public function requestJson(string $method, string $url, #[SensitiveParameter]
-    array $form = []): array
+    array $form = [], #[SensitiveParameter]
+    array $headers = []): array
     {
+        $this->assertSafeHeaders($headers);
         $addresses = $this->assertSafeUrl($url);
         $parts = parse_url($url);
         assert(is_array($parts) && isset($parts['host']));
@@ -51,7 +55,7 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
             $options = [
                 'redirect' => 0,
                 'timeout' => OidcConfigurationDto::HTTP_TIMEOUT_SECONDS,
-                'headers' => ['Accept' => 'application/json'],
+                'headers' => ['Accept' => 'application/json'] + $headers,
                 'curl' => [
                     CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
                     CURLOPT_RESOLVE => [
@@ -108,6 +112,24 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
         }
 
         return $decoded;
+    }
+
+    /** Permit only an application-supplied OAuth bearer token without control characters. */
+    private function assertSafeHeaders(array $headers): void
+    {
+        if ($headers === []) {
+            return;
+        }
+        if (array_keys($headers) !== ['Authorization']) {
+            throw new OidcNetworkException('The OIDC provider request headers are not allowed.');
+        }
+        $authorization = $headers['Authorization'];
+        if (
+            !is_string($authorization) || strlen($authorization) > 8_199 ||
+            !preg_match('/^Bearer [A-Za-z0-9._~+\/-]{1,8192}={0,2}$/D', $authorization)
+        ) {
+            throw new OidcNetworkException('The OIDC provider authorization header is invalid.');
+        }
     }
 
     /**
