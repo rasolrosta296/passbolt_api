@@ -9,7 +9,7 @@ final class CreateKeycloakSsoProvisioning extends AbstractMigration
     public function change(): void
     {
         $uuid = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_general_ci'];
-        $ascii = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_bin'];
+        $ascii = ['null' => false, 'encoding' => 'ascii', 'collation' => 'ascii_general_ci'];
 
         $this->table('keycloak_sso_provisioning_events', [
             'id' => false,

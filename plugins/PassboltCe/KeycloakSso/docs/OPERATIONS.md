@@ -14,11 +14,13 @@ Migrations must run in timestamp order:
 4. `20260906120000_CreateKeycloakSsoRotationBarriers`
 5. `20260926120000_CreateKeycloakSsoProvisioning`
 
-After applying them, verify the four plugin table groups, unique indexes, and
+After applying them, verify the five plugin table groups, unique indexes, and
 foreign keys described in the migration source. UUID columns use Passbolt's
 ASCII UUID conventions. Issuer and subject columns use binary collation because
-both values are opaque and case-sensitive. Server-share, nonce, digest, status,
-and protocol fields use binary ASCII collation.
+both values are opaque and case-sensitive. Cryptographic server-share, nonce,
+digest, status, and protocol fields use binary ASCII collation. Provisioning
+bookkeeping fields follow Passbolt's required general ASCII collation; issuer
+and subject remain binary and case-sensitive.
 
 The crypto-enrollment migration creates:
 

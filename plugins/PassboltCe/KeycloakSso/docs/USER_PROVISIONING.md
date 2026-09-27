@@ -3,8 +3,9 @@
 ## Security contract
 
 The provisioning subsystem observes persisted Keycloak administrator events for
-users created through **Users → Add user**. It creates an ordinary inactive
-Passbolt user and the normal one-time Passbolt setup invitation. It does not:
+users created through **Users → Add user** or the equivalent authenticated
+Keycloak Admin REST API operation. It creates an ordinary inactive Passbolt
+user and the normal one-time Passbolt setup invitation. It does not:
 
 - create or alter a Keycloak identity link;
 - authenticate the user to Passbolt;
@@ -23,6 +24,12 @@ dedicated confidential Keycloak service-account client is granted the minimum
 realm-management roles required to read saved administrator events and user
 profiles. The provisioning client is separate from the browser-facing OIDC
 client.
+
+This intentionally delegates ordinary Passbolt invitation authority to every
+Keycloak administrator or automation that is already authorized to create or
+update users in the configured realm. The event source is not restricted to one
+Admin Console operator. Restrict Keycloak `manage-users` and equivalent
+fine-grained administration permissions accordingly.
 
 The command accepts only `CREATE` and `UPDATE` events whose resource type is
 `USER`. `UPDATE` is necessary when an administrator creates a user before

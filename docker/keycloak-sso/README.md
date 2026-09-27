@@ -3,7 +3,7 @@
 This image is a narrow overlay on the official standard Passbolt CE 5.15.0
 image. It keeps the official rootful image's entrypoint, services, runtime
 user, ports, and package layout while adding only the reviewed Keycloak SSO
-plugin, its two generic core extension points, its four migrations, locked
+plugin, its two generic core extension points, its five migrations, locked
 production Composer dependencies, and the GMP runtime extension required by
 the HPKE implementation. GNU Bash is an explicit pinned runtime dependency for
 approved operational and init scripts.

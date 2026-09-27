@@ -6,10 +6,15 @@ namespace Passbolt\KeycloakSso\Test\TestCase\Service\Provisioning;
 use App\Model\Entity\AuthenticationToken;
 use App\Model\Entity\User;
 use App\Model\Table\UsersTable;
+use App\Notification\Email\Redactor\CoreEmailRedactorPool;
+use App\Notification\NotificationSettings\CoreNotificationSettingsDefinition;
 use App\Test\Factory\AuthenticationTokenFactory;
 use App\Test\Factory\RoleFactory;
 use App\Test\Factory\UserFactory;
+use App\Test\Lib\Model\EmailQueueTrait;
+use Cake\Event\EventManager;
 use Cake\ORM\TableRegistry;
+use Passbolt\EmailDigest\Test\Factory\EmailQueueFactory;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
@@ -22,8 +27,14 @@ use Passbolt\KeycloakSso\Test\Utility\QueuedOidcHttpClient;
 
 final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestCase
 {
+    use EmailQueueTrait;
+
     public function testCreatesOnlyInactiveUserInvitationAndProvisioningProvenance(): void
     {
+        EventManager::instance()
+            ->on(new CoreEmailRedactorPool())
+            ->on(new CoreNotificationSettingsDefinition());
+        $this->initEmailForServiceTest();
         RoleFactory::make()->user()->persist();
         $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
         $this->assertInstanceOf(User::class, $actor);
@@ -44,6 +55,7 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
             'type' => AuthenticationToken::TYPE_REGISTER,
         ])->count());
         $this->assertSame(1, AuthenticationTokenFactory::find()->where(['user_id' => $created->id])->count());
+        $this->assertSame(1, EmailQueueFactory::count());
         $this->assertSame(0, AuthenticationTokenFactory::find()->where([
             'user_id' => $created->id,
             'type IN' => [AuthenticationToken::TYPE_LOGIN, AuthenticationToken::TYPE_REFRESH_TOKEN],
