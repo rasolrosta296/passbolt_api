@@ -49,4 +49,12 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['POST']);
     $routes->connect('/crypto/complete', ['controller' => 'CryptoSso', 'action' => 'complete'])
         ->setMethods(['GET']);
+    $routes->connect('/provisioning/groups/pending', [
+        'controller' => 'GroupProvisioning',
+        'action' => 'pending',
+    ])->setMethods(['GET']);
+    $routes->connect('/provisioning/groups/complete/{membershipId}', [
+        'controller' => 'GroupProvisioning',
+        'action' => 'complete',
+    ])->setPass(['membershipId'])->setMethods(['POST']);
 });

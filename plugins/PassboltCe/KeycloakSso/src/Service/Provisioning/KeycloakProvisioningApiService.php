@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Service\Provisioning;
 use Passbolt\KeycloakSso\Error\Exception\ProvisioningException;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventPageDto;
+use Passbolt\KeycloakSso\Model\Dto\KeycloakProvisioningGroupDto;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakProvisioningUserDto;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
@@ -13,6 +14,8 @@ use Passbolt\KeycloakSso\Utility\Http\OidcHttpClientInterface;
 
 final class KeycloakProvisioningApiService
 {
+    private const MAX_GROUP_PAGES = 1_000;
+
     private ?string $accessToken = null;
 
     /** Construct the narrowly scoped Keycloak Admin API client. */
@@ -101,6 +104,44 @@ final class KeycloakProvisioningApiService
         );
     }
 
+    /**
+     * Retrieve every direct Keycloak group currently assigned to a user.
+     *
+     * @return list<\Passbolt\KeycloakSso\Model\Dto\KeycloakProvisioningGroupDto>
+     */
+    public function userGroups(string $subject): array
+    {
+        $this->assertOpaqueIdentifier($subject, 255, 'subject');
+        $groups = [];
+        $first = 0;
+        for ($page = 0; $page < self::MAX_GROUP_PAGES; $page++) {
+            $query = http_build_query([
+                'briefRepresentation' => 'true',
+                'first' => $first,
+                'max' => $this->configuration->batchSize,
+            ], '', '&', PHP_QUERY_RFC3986);
+            $document = $this->httpClient->requestJson(
+                'GET',
+                $this->configuration->adminApiBaseUrl . '/users/' . rawurlencode($subject) . '/groups?' . $query,
+                [],
+                $this->authorizationHeader()
+            );
+            if (!array_is_list($document)) {
+                throw new ProvisioningException('Keycloak returned an invalid user group collection.');
+            }
+            foreach ($document as $group) {
+                $groups[] = $this->parseGroup($group);
+            }
+            $received = count($document);
+            if ($received < $this->configuration->batchSize) {
+                return $groups;
+            }
+            $first += $received;
+        }
+
+        throw new ProvisioningException('The Keycloak user group collection exceeded the page limit.');
+    }
+
     /** @return array{Authorization: string} */
     private function authorizationHeader(): array
     {
@@ -170,6 +211,32 @@ final class KeycloakProvisioningApiService
             $event['operationType'],
             $matches[1]
         );
+    }
+
+    /** Parse one exact Keycloak group representation. */
+    private function parseGroup(mixed $group): KeycloakProvisioningGroupDto
+    {
+        if (!is_array($group)) {
+            throw new ProvisioningException('Keycloak returned an invalid user group.');
+        }
+        foreach (['id', 'name', 'path'] as $field) {
+            if (!isset($group[$field]) || !is_string($group[$field])) {
+                throw new ProvisioningException('Keycloak returned an invalid user group.');
+            }
+        }
+        $this->assertOpaqueIdentifier($group['id'], 255, 'group identifier');
+        if (
+            $group['name'] === '' || mb_strlen($group['name'], 'UTF-8') > 255 ||
+            trim($group['name']) !== $group['name'] || !mb_check_encoding($group['name'], 'UTF-8') ||
+            preg_match('/[\x00-\x1F\x7F]/', $group['name']) ||
+            !str_starts_with($group['path'], '/') || strlen($group['path']) < 2 ||
+            mb_strlen($group['path'], 'UTF-8') > 255 ||
+            !mb_check_encoding($group['path'], 'UTF-8') || preg_match('/[\x00-\x1F\x7F]/', $group['path'])
+        ) {
+            throw new ProvisioningException('Keycloak returned an invalid user group profile.');
+        }
+
+        return new KeycloakProvisioningGroupDto($group['id'], $group['name'], $group['path']);
     }
 
     /** Validate one bounded opaque Keycloak identifier without normalization. */

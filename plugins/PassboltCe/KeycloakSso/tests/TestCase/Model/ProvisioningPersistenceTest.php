@@ -3,12 +3,16 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Test\TestCase\Model;
 
+use App\Model\Entity\Group;
 use App\Model\Entity\User;
+use App\Test\Factory\GroupFactory;
 use App\Test\Factory\UserFactory;
 use App\Utility\UuidFactory;
 use Cake\Database\Exception\QueryException;
 use Cake\Datasource\Exception\RecordNotFoundException;
 use Cake\ORM\TableRegistry;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoGroupMembership;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedGroup;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisioningEvent;
 use Passbolt\KeycloakSso\Test\Lib\KeycloakSsoIntegrationTestCase;
 
@@ -89,5 +93,125 @@ final class ProvisioningPersistenceTest extends KeycloakSsoIntegrationTestCase
             ->get('Passbolt/KeycloakSso.KeycloakSsoIdentities')
             ->find()
             ->firstOrFail();
+    }
+
+    public function testDatabaseRejectsDuplicateProviderGroupAndMembership(): void
+    {
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $user = UserFactory::make()->user()->active()->notDisabled()->persist();
+        $group = GroupFactory::make()->withGroupsManagersFor([$actor])->persist();
+        $otherGroup = GroupFactory::make()->withGroupsManagersFor([$actor])->persist();
+        $this->assertInstanceOf(User::class, $user);
+        $this->assertInstanceOf(Group::class, $group);
+        $this->assertInstanceOf(Group::class, $otherGroup);
+        $groups = TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoProvisionedGroups');
+        $mapping = $groups->newEntity([
+            'id' => UuidFactory::uuid(),
+            'group_id' => $group->id,
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'keycloak_group_id' => 'engineering-id',
+            'keycloak_group_path' => '/Engineering',
+        ], ['accessibleFields' => ['*' => true]]);
+        $this->assertInstanceOf(KeycloakSsoProvisionedGroup::class, $mapping);
+        $groups->saveOrFail($mapping);
+        $duplicate = $groups->newEntity([
+            'id' => UuidFactory::uuid(),
+            'group_id' => $otherGroup->id,
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'keycloak_group_id' => 'engineering-id',
+            'keycloak_group_path' => '/Engineering',
+        ], ['accessibleFields' => ['*' => true]]);
+        $this->assertFalse($groups->save($duplicate));
+
+        $memberships = TableRegistry::getTableLocator()->get(
+            'Passbolt/KeycloakSso.KeycloakSsoGroupMemberships'
+        );
+        $first = $memberships->newEntity([
+            'id' => UuidFactory::uuid(),
+            'provisioned_group_id' => $mapping->id,
+            'user_id' => $user->id,
+            'status' => KeycloakSsoGroupMembership::STATUS_PENDING_ACTIVATION,
+        ], ['accessibleFields' => ['*' => true]]);
+        $memberships->saveOrFail($first);
+        $duplicateMembership = $memberships->newEntity([
+            'id' => UuidFactory::uuid(),
+            'provisioned_group_id' => $mapping->id,
+            'user_id' => $user->id,
+            'status' => KeycloakSsoGroupMembership::STATUS_PENDING_CRYPTO,
+        ], ['accessibleFields' => ['*' => true]]);
+        $this->assertFalse($memberships->save($duplicateMembership));
+    }
+
+    public function testDatabaseConstraintRejectsDuplicateProviderGroupWithoutApplicationRules(): void
+    {
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $group = GroupFactory::make()->withGroupsManagersFor([$actor])->persist();
+        $otherGroup = GroupFactory::make()->withGroupsManagersFor([$actor])->persist();
+        $this->assertInstanceOf(Group::class, $group);
+        $this->assertInstanceOf(Group::class, $otherGroup);
+        $table = TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoProvisionedGroups');
+        $issuer = 'https://keyclock.gobaz.ir/realms/passbolt';
+        $providerGroupId = 'engineering-id';
+        $mapping = $table->newEntity([
+            'id' => UuidFactory::uuid(),
+            'group_id' => $group->id,
+            'issuer' => $issuer,
+            'keycloak_group_id' => $providerGroupId,
+            'keycloak_group_path' => '/Engineering',
+        ], ['accessibleFields' => ['*' => true]]);
+        $table->saveOrFail($mapping);
+
+        $now = date('Y-m-d H:i:s');
+        $this->expectException(QueryException::class);
+        $table->getConnection()->insert($table->getTable(), [
+            'id' => UuidFactory::uuid(),
+            'group_id' => $otherGroup->id,
+            'issuer' => $issuer,
+            'keycloak_group_id' => $providerGroupId,
+            'keycloak_group_path' => '/Engineering',
+            'created' => $now,
+            'modified' => $now,
+        ]);
+    }
+
+    public function testDatabaseConstraintRejectsDuplicateGroupMembershipWithoutApplicationRules(): void
+    {
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $user = UserFactory::make()->user()->active()->notDisabled()->persist();
+        $group = GroupFactory::make()->withGroupsManagersFor([$actor])->persist();
+        $this->assertInstanceOf(User::class, $user);
+        $this->assertInstanceOf(Group::class, $group);
+        $groups = TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoProvisionedGroups');
+        $mapping = $groups->newEntity([
+            'id' => UuidFactory::uuid(),
+            'group_id' => $group->id,
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'keycloak_group_id' => 'engineering-id',
+            'keycloak_group_path' => '/Engineering',
+        ], ['accessibleFields' => ['*' => true]]);
+        $this->assertInstanceOf(KeycloakSsoProvisionedGroup::class, $mapping);
+        $groups->saveOrFail($mapping);
+        $memberships = TableRegistry::getTableLocator()->get(
+            'Passbolt/KeycloakSso.KeycloakSsoGroupMemberships'
+        );
+        $first = $memberships->newEntity([
+            'id' => UuidFactory::uuid(),
+            'provisioned_group_id' => $mapping->id,
+            'user_id' => $user->id,
+            'status' => KeycloakSsoGroupMembership::STATUS_PENDING_ACTIVATION,
+        ], ['accessibleFields' => ['*' => true]]);
+        $memberships->saveOrFail($first);
+
+        $now = date('Y-m-d H:i:s');
+        $this->expectException(QueryException::class);
+        $memberships->getConnection()->insert($memberships->getTable(), [
+            'id' => UuidFactory::uuid(),
+            'provisioned_group_id' => $mapping->id,
+            'user_id' => $user->id,
+            'status' => KeycloakSsoGroupMembership::STATUS_PENDING_CRYPTO,
+            'failure_code' => null,
+            'created' => $now,
+            'modified' => $now,
+        ]);
     }
 }

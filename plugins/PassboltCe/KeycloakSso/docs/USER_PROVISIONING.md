@@ -79,11 +79,17 @@ KEYCLOAK_SSO_PROVISIONING_ACTOR_USER_ID=<active Passbolt administrator UUID>
 KEYCLOAK_SSO_PROVISIONING_INITIAL_LOOKBACK_SECONDS=86400
 KEYCLOAK_SSO_PROVISIONING_OVERLAP_SECONDS=300
 KEYCLOAK_SSO_PROVISIONING_BATCH_SIZE=100
+KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=false
 ```
 
 The actor UUID identifies the active Passbolt administrator recorded as the
 inviter. The provisioning client secret must come from a secret store and must
 never be logged or committed.
+
+Group provisioning is independently disabled by default. Enabling it delegates
+creation of mapped Passbolt groups to Keycloak group assignments. The actor is
+installed as the initial Passbolt group manager; provisioned users are always
+ordinary members and never receive manager or Passbolt administrator rights.
 
 ## Keycloak 26.3.3 setup
 
@@ -120,6 +126,36 @@ scheduler. Concurrent executions are safe: the event claim and user creation
 are serialized at the database level, and uniqueness constraints remain the
 final authority.
 
+## Group synchronization and end-to-end encryption
+
+When `KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=true`, preview group changes with:
+
+```text
+bin/cake keycloak_sso_sync_groups --dry-run
+```
+
+Apply one bounded synchronization pass with:
+
+```text
+bin/cake keycloak_sso_sync_groups
+```
+
+The permanent mapping key is `(issuer, Keycloak group ID)`. A Keycloak group
+path is used only as the initial Passbolt display name and is never used to
+adopt an existing Passbolt group. Name collisions fail closed.
+
+The API automatically completes membership only when the Passbolt user is
+active and the mapped group grants no resource for which that user lacks an
+encrypted secret. Otherwise the desired membership remains `pending_activation`
+or `pending_crypto`. The server never fabricates or decrypts resource secrets.
+Pending cryptographic memberships require an authenticated and unlocked group
+manager client to use the normal Passbolt sharing operation and encrypt each
+required secret to the new user's OpenPGP public key.
+
+The first release is additive only. It does not remove memberships, delete or
+rename groups, translate Keycloak roles into Passbolt privileges, or infer a
+mapping from a mutable group name.
+
 The command reports counts only. It never prints Keycloak event IDs, subjects,
 emails, access tokens, or client credentials.
 
@@ -132,3 +168,5 @@ emails, access tokens, or client credentials.
   user, is terminal and requires administrator review.
 - Provisioning does not link the Keycloak identity. The user must finish the
   normal Passbolt invitation and then use the existing explicit linking flow.
+- Fully automatic server-side membership is intentionally impossible once a
+  group contains resources that are not already encrypted for the new user.

@@ -9,6 +9,7 @@ use Cake\Core\ContainerInterface;
 use Cake\Core\PluginApplicationInterface;
 use Passbolt\KeycloakSso\Command\KeycloakSsoProvisionUsersCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoServerSharesRewrapCommand;
+use Passbolt\KeycloakSso\Command\KeycloakSsoSyncGroupsCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoTransactionsCleanupCommand;
 use Passbolt\KeycloakSso\Event\RevokeCryptoEnrollmentsOnGpgkeyChange;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactory;
@@ -25,6 +26,7 @@ final class KeycloakSsoPlugin extends BasePlugin
     {
         $commands->add('keycloak_sso_provision_users', KeycloakSsoProvisionUsersCommand::class);
         $commands->add('keycloak_sso_server_shares_rewrap', KeycloakSsoServerSharesRewrapCommand::class);
+        $commands->add('keycloak_sso_sync_groups', KeycloakSsoSyncGroupsCommand::class);
         $commands->add('keycloak_sso_transactions_cleanup', KeycloakSsoTransactionsCleanupCommand::class);
 
         return $commands;

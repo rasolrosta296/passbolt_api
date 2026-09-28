@@ -67,6 +67,73 @@ final class KeycloakProvisioningApiServiceTest extends TestCase
         $this->assertSame('GET', $http->requests[2]['method']);
     }
 
+    public function testFetchesAndValidatesPaginatedDirectUserGroups(): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            [
+                ['id' => 'engineering-id', 'name' => 'Engineering', 'path' => '/Engineering'],
+                ['id' => 'backend-id', 'name' => 'Backend', 'path' => '/Engineering/Backend'],
+            ],
+            [],
+        ]);
+        $configuration = new ProvisioningConfigurationDto(
+            'https://keyclock.gobaz.ir/realms/passbolt',
+            'https://keyclock.gobaz.ir/admin/realms/passbolt',
+            'passbolt-provisioning',
+            'provisioning-secret',
+            '8d020e76-4951-58d2-b68e-99e2fc1053f8',
+            86_400,
+            300,
+            2
+        );
+        $service = new KeycloakProvisioningApiService(
+            $configuration,
+            new OidcDiscoveryDocument(
+                'https://keyclock.gobaz.ir/realms/passbolt',
+                'https://keyclock.gobaz.ir/realms/passbolt/protocol/openid-connect/auth',
+                'https://keyclock.gobaz.ir/realms/passbolt/protocol/openid-connect/token',
+                'https://keyclock.gobaz.ir/realms/passbolt/protocol/openid-connect/certs'
+            ),
+            $http
+        );
+
+        $groups = $service->userGroups('e2bc1228-043a-4512-8a91-f08683e55e53');
+
+        $this->assertCount(2, $groups);
+        $this->assertSame('Engineering', $groups[0]->passboltName());
+        $this->assertSame('Engineering/Backend', $groups[1]->passboltName());
+        $this->assertStringContainsString('first=0&max=2', $http->requests[1]['url']);
+        $this->assertStringContainsString('first=2&max=2', $http->requests[2]['url']);
+        $this->assertSame('Bearer service-token', $http->requests[2]['headers']['Authorization']);
+    }
+
+    #[DataProvider('invalidGroupProvider')]
+    public function testRejectsMalformedUserGroups(mixed $group): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            [$group],
+        ]);
+
+        $this->expectException(ProvisioningException::class);
+        $this->service($http)->userGroups('e2bc1228-043a-4512-8a91-f08683e55e53');
+    }
+
+    public static function invalidGroupProvider(): array
+    {
+        $valid = ['id' => 'engineering-id', 'name' => 'Engineering', 'path' => '/Engineering'];
+
+        return [
+            'not an object' => ['group'],
+            'missing id' => [array_diff_key($valid, ['id' => true])],
+            'blank name' => [array_replace($valid, ['name' => ''])],
+            'relative path' => [array_replace($valid, ['path' => 'Engineering'])],
+            'overlong path' => [array_replace($valid, ['path' => '/' . str_repeat('a', 255)])],
+            'control in path' => [array_replace($valid, ['path' => "/Engineering\nAdmin"])],
+        ];
+    }
+
     public function testExcludesFailedAndNestedEventsButPreservesRawPageSize(): void
     {
         $valid = [
