@@ -3,9 +3,13 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso;
 
+use Cake\Console\CommandCollection;
 use Cake\Core\BasePlugin;
 use Cake\Core\ContainerInterface;
 use Cake\Core\PluginApplicationInterface;
+use Passbolt\KeycloakSso\Command\KeycloakSsoProvisionUsersCommand;
+use Passbolt\KeycloakSso\Command\KeycloakSsoServerSharesRewrapCommand;
+use Passbolt\KeycloakSso\Command\KeycloakSsoTransactionsCleanupCommand;
 use Passbolt\KeycloakSso\Event\RevokeCryptoEnrollmentsOnGpgkeyChange;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactory;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoSsoServiceFactoryInterface;
@@ -16,6 +20,16 @@ use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
 
 final class KeycloakSsoPlugin extends BasePlugin
 {
+    /** @inheritDoc */
+    public function console(CommandCollection $commands): CommandCollection
+    {
+        $commands->add('keycloak_sso_provision_users', KeycloakSsoProvisionUsersCommand::class);
+        $commands->add('keycloak_sso_server_shares_rewrap', KeycloakSsoServerSharesRewrapCommand::class);
+        $commands->add('keycloak_sso_transactions_cleanup', KeycloakSsoTransactionsCleanupCommand::class);
+
+        return $commands;
+    }
+
     /** @inheritDoc */
     public function bootstrap(PluginApplicationInterface $app): void
     {
