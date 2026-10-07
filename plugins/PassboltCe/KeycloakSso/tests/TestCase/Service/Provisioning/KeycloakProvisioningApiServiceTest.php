@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Test\TestCase\Service\Provisioning;
 
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Error\Exception\ProvisioningException;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
@@ -65,6 +66,52 @@ final class KeycloakProvisioningApiServiceTest extends TestCase
         $this->assertTrue($user->enabled);
         $this->assertCount(3, $http->requests);
         $this->assertSame('GET', $http->requests[2]['method']);
+    }
+
+    public function testUserOrNullTreatsOnlyNotFoundAsAbsence(): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(404),
+        ]);
+
+        $this->assertNull($this->service($http)->userOrNull('e2bc1228-043a-4512-8a91-f08683e55e53'));
+    }
+
+    public function testUserOrNullDoesNotTreatProviderFailureAsAbsence(): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(503),
+        ]);
+
+        $this->expectException(OidcHttpStatusException::class);
+        $this->service($http)->userOrNull('e2bc1228-043a-4512-8a91-f08683e55e53');
+    }
+
+    public function testUserDirectoryPreflightRequiresSuccessfulListResponse(): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            [],
+        ]);
+
+        $this->service($http)->assertUserDirectoryAvailable();
+
+        $this->assertSame('GET', $http->requests[1]['method']);
+        $this->assertStringContainsString('/users?briefRepresentation=true&first=0&max=1', $http->requests[1]['url']);
+        $this->assertSame('Bearer service-token', $http->requests[1]['headers']['Authorization']);
+    }
+
+    public function testUserDirectoryPreflightRejectsNonListDocument(): void
+    {
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            ['error' => 'not-a-list'],
+        ]);
+
+        $this->expectException(ProvisioningException::class);
+        $this->service($http)->assertUserDirectoryAvailable();
     }
 
     public function testFetchesAndValidatesPaginatedDirectUserGroups(): void

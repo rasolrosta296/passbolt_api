@@ -6,14 +6,18 @@ namespace Passbolt\KeycloakSso\Service\Provisioning;
 use App\Model\Entity\Group;
 use App\Model\Entity\GroupsUser;
 use App\Model\Entity\Role;
+use App\Model\Entity\Secret;
 use App\Model\Entity\User;
 use App\Model\Table\GroupsTable;
 use App\Model\Table\GroupsUsersTable;
 use App\Model\Table\PermissionsTable;
 use App\Service\GroupsUsers\GroupsUsersAddService;
+use App\Service\GroupsUsers\GroupsUsersDeleteService;
+use App\Service\Resources\ResourcesExpireResourcesServiceInterface;
 use App\Utility\UserAccessControl;
 use App\Utility\UuidFactory;
 use Cake\Datasource\ConnectionManager;
+use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
 use Cake\ORM\Table;
 use Passbolt\KeycloakSso\Error\Exception\ProvisioningException;
@@ -35,6 +39,8 @@ final class ProvisioningGroupSyncService
     public const OUTCOME_PENDING_ACTIVATION = 'pending_activation';
     public const OUTCOME_PENDING_CRYPTO = 'pending_crypto';
     public const OUTCOME_EXISTING = 'existing';
+    public const OUTCOME_MEMBERSHIP_REMOVED = 'memberships_removed';
+    public const OUTCOME_MEMBERSHIP_WOULD_REMOVE = 'memberships_would_remove';
     public const OUTCOME_SKIPPED = 'skipped';
     public const OUTCOME_FAILED = 'failed';
 
@@ -44,7 +50,9 @@ final class ProvisioningGroupSyncService
     public function __construct(
         private readonly ProvisioningConfigurationDto $configuration,
         private readonly KeycloakProvisioningApiService $api,
+        private readonly ResourcesExpireResourcesServiceInterface $resourcesExpiry,
         private readonly GroupProvisioningAuditService $audit = new GroupProvisioningAuditService(),
+        private readonly bool $reconciliationEnabled = false,
     ) {
     }
 
@@ -63,6 +71,8 @@ final class ProvisioningGroupSyncService
             self::OUTCOME_PENDING_ACTIVATION,
             self::OUTCOME_PENDING_CRYPTO,
             self::OUTCOME_EXISTING,
+            self::OUTCOME_MEMBERSHIP_REMOVED,
+            self::OUTCOME_MEMBERSHIP_WOULD_REMOVE,
             self::OUTCOME_SKIPPED,
             self::OUTCOME_FAILED,
         ], 0);
@@ -71,6 +81,7 @@ final class ProvisioningGroupSyncService
         for ($page = 0; $page < self::MAX_USER_PAGES; $page++) {
             $provisionedUsers = $this->provisionedUsersTable()->find()
                 ->contain(['Users'])
+                ->where(['KeycloakSsoProvisionedUsers.issuer' => $this->configuration->issuer])
                 ->orderByAsc('KeycloakSsoProvisionedUsers.id')
                 ->limit($this->configuration->batchSize)
                 ->offset($first)
@@ -116,6 +127,11 @@ final class ProvisioningGroupSyncService
                         $outcome = $this->synchronizeMembership($mapping, $user, $actor, $dryRun);
                         $counts[$outcome]++;
                     }
+                    if ($this->reconciliationEnabled) {
+                        foreach ($this->reconcileRemovedMemberships($user, $actor, $seen, $dryRun) as $outcome) {
+                            $counts[$outcome]++;
+                        }
+                    }
                 } catch (Throwable) {
                     $this->audit->record('failed', 'unexpected', $user->id);
                     $counts[self::OUTCOME_FAILED]++;
@@ -128,6 +144,72 @@ final class ProvisioningGroupSyncService
         }
 
         throw new ProvisioningException('The provisioned user collection exceeded the page limit.');
+    }
+
+    /**
+     * Remove only plugin-managed memberships absent from a complete Keycloak response.
+     *
+     * @param array<string, true> $seen
+     * @return list<string>
+     */
+    private function reconcileRemovedMemberships(User $user, User $actor, array $seen, bool $dryRun): array
+    {
+        $managed = $this->groupMembershipsTable()->find()
+            ->where([
+                'KeycloakSsoGroupMemberships.user_id' => $user->id,
+            ])
+            ->contain(['ProvisionedGroups'])
+            ->orderByAsc('KeycloakSsoGroupMemberships.id')
+            ->all();
+        $outcomes = [];
+        foreach ($managed as $membership) {
+            $mapping = $membership->get('provisioned_group');
+            if (
+                !($mapping instanceof KeycloakSsoProvisionedGroup) ||
+                !hash_equals($this->configuration->issuer, (string)$mapping->get('issuer')) ||
+                isset($seen[(string)$mapping->get('keycloak_group_id')])
+            ) {
+                continue;
+            }
+            $groupId = (string)$mapping->get('group_id');
+            $groupUser = $this->groupsUsersTable()->find()->where([
+                'group_id' => $groupId,
+                'user_id' => $user->id,
+            ])->first();
+            if (
+                !($groupUser instanceof GroupsUser) &&
+                $membership->get('status') === KeycloakSsoGroupMembership::STATUS_REVOKED
+            ) {
+                continue;
+            }
+            if ($dryRun) {
+                $outcomes[] = self::OUTCOME_MEMBERSHIP_WOULD_REMOVE;
+                continue;
+            }
+            $this->groupsUsersTable()->getConnection()->transactional(function () use (
+                $groupUser,
+                $actor,
+                $membership
+            ): void {
+                if ($groupUser instanceof GroupsUser) {
+                    $changes = (new GroupsUsersDeleteService())->delete(
+                        new UserAccessControl(Role::ADMIN, $actor->id),
+                        (string)$groupUser->get('id')
+                    );
+                    $this->resourcesExpiry->expireResourcesForSecrets(
+                        $changes->getDeletedEntities(Secret::class)
+                    );
+                }
+                $membership->set('status', KeycloakSsoGroupMembership::STATUS_REVOKED);
+                $membership->set('failure_code', null);
+                $membership->set('revoked', DateTime::now());
+                $this->groupMembershipsTable()->saveOrFail($membership);
+            });
+            $this->audit->record('membership_removed', 'none', $user->id, $groupId);
+            $outcomes[] = self::OUTCOME_MEMBERSHIP_REMOVED;
+        }
+
+        return $outcomes;
     }
 
     /** Locate an immutable provider-group mapping and validate its Passbolt group. */
@@ -274,6 +356,7 @@ final class ProvisioningGroupSyncService
             $entity->set('status', $status);
             $entity->set('failure_code', null);
         }
+        $entity->set('revoked', null);
         $table->saveOrFail($entity);
     }
 

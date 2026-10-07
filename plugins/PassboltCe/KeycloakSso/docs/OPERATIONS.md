@@ -13,6 +13,8 @@ Migrations must run in timestamp order:
 3. `20260905120000_CreateKeycloakSsoCryptoEnrollments`
 4. `20260906120000_CreateKeycloakSsoRotationBarriers`
 5. `20260926120000_CreateKeycloakSsoProvisioning`
+6. `20260928120000_CreateKeycloakSsoGroupProvisioning`
+7. `20261006120000_AddKeycloakSsoAuthoritativeLifecycle`
 
 After applying them, verify the five plugin table groups, unique indexes, and
 foreign keys described in the migration source. UUID columns use Passbolt's
@@ -43,6 +45,11 @@ resources, OpenPGP keys, or secrets.
 Optional Keycloak administrator-created user provisioning is documented in
 `docs/USER_PROVISIONING.md`. It is disabled unless its separate environment
 flag and read-only service-account credentials are configured.
+
+Authoritative group removal and user deprovisioning each have an independent
+explicit enable flag. Apply the lifecycle migration before enabling either.
+Run the provisioning, group synchronization, and user reconciliation commands
+as separate jobs so failure and audit counts remain independently observable.
 
 ### Rollback warning
 

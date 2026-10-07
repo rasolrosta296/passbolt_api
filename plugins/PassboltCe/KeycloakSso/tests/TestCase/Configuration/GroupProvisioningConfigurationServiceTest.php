@@ -40,4 +40,22 @@ final class GroupProvisioningConfigurationServiceTest extends TestCase
             'ambiguous' => ['enabled'],
         ];
     }
+
+    public function testReconciliationRequiresIndependentExplicitTrue(): void
+    {
+        $service = new GroupProvisioningConfigurationService();
+
+        $this->assertFalse($service->reconciliationEnabled([]));
+        $this->assertTrue($service->reconciliationEnabled([
+            KeycloakSsoEnvironment::GROUP_RECONCILIATION_ENABLED => 'true',
+        ]));
+    }
+
+    public function testReconciliationRejectsAmbiguousValue(): void
+    {
+        $this->expectException(OidcConfigurationException::class);
+        (new GroupProvisioningConfigurationService())->reconciliationEnabled([
+            KeycloakSsoEnvironment::GROUP_RECONCILIATION_ENABLED => 'ambiguous',
+        ]);
+    }
 }

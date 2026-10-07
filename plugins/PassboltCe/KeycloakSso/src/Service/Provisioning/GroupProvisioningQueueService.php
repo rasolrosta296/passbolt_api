@@ -26,6 +26,7 @@ final class GroupProvisioningQueueService
 
     /** Construct the manager-only pending membership queue. */
     public function __construct(
+        private readonly string $issuer,
         private readonly GroupProvisioningAuditService $audit = new GroupProvisioningAuditService(),
     ) {
     }
@@ -46,7 +47,10 @@ final class GroupProvisioningQueueService
             ])
                 ->innerJoin(
                     ['MappedGroupsFilter' => 'keycloak_sso_provisioned_groups'],
-                    ['MappedGroupsFilter.id = KeycloakSsoGroupMemberships.provisioned_group_id']
+                    [
+                        'MappedGroupsFilter.id = KeycloakSsoGroupMemberships.provisioned_group_id',
+                        'MappedGroupsFilter.issuer' => $this->issuer,
+                    ]
                 )
                 ->innerJoin(
                     ['ManagerMembershipsFilter' => 'groups_users'],
@@ -112,6 +116,9 @@ final class GroupProvisioningQueueService
             }
             $mapping = $membership->get('provisioned_group');
             if (!($mapping instanceof KeycloakSsoProvisionedGroup)) {
+                throw new BadRequestException(__('The group-provisioning request is unavailable.'));
+            }
+            if (!hash_equals($this->issuer, (string)$mapping->get('issuer'))) {
                 throw new BadRequestException(__('The group-provisioning request is unavailable.'));
             }
             $group = $mapping->get('group');

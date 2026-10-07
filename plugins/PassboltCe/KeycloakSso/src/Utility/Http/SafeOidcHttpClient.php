@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Utility\Http;
 use Cake\Http\Client;
 use CurlHandle;
 use JsonException;
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use SensitiveParameter;
@@ -90,7 +91,7 @@ final class SafeOidcHttpClient implements OidcHttpClientInterface
             throw new OidcNetworkException('OIDC endpoint redirects are not allowed.');
         }
         if ($status < 200 || $status >= 300) {
-            throw new OidcNetworkException('The OIDC provider returned an unsuccessful status.');
+            throw new OidcHttpStatusException($status);
         }
 
         $declaredLength = $response->getHeaderLine('Content-Length');

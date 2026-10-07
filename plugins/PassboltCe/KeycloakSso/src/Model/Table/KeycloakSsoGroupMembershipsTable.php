@@ -42,8 +42,11 @@ final class KeycloakSsoGroupMembershipsTable extends Table
                 KeycloakSsoGroupMembership::STATUS_PENDING_CRYPTO,
                 KeycloakSsoGroupMembership::STATUS_ACTIVE,
                 KeycloakSsoGroupMembership::STATUS_FAILED,
+                KeycloakSsoGroupMembership::STATUS_REVOKED,
             ])->requirePresence('status', 'create')->notEmptyString('status')
             ->scalar('failure_code')->maxLength('failure_code', 64)->allowEmptyString('failure_code');
+
+        $validator->allowEmptyDateTime('revoked');
 
         return $validator;
     }

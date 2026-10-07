@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Model\Table;
 use Cake\ORM\RulesChecker;
 use Cake\ORM\Table;
 use Cake\Validation\Validator;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedUser;
 
 final class KeycloakSsoProvisionedUsersTable extends Table
 {
@@ -39,6 +40,26 @@ final class KeycloakSsoProvisionedUsersTable extends Table
         $validator
             ->scalar('source_event_id')->maxLength('source_event_id', 64)
             ->requirePresence('source_event_id', 'create')->notEmptyString('source_event_id');
+
+        $validator
+            ->scalar('lifecycle_status')->inList('lifecycle_status', [
+                KeycloakSsoProvisionedUser::STATUS_ACTIVE,
+                KeycloakSsoProvisionedUser::STATUS_DEPROVISIONING,
+                KeycloakSsoProvisionedUser::STATUS_REACTIVATION_REQUIRED,
+                KeycloakSsoProvisionedUser::STATUS_DEPROVISIONED,
+                KeycloakSsoProvisionedUser::STATUS_QUARANTINED,
+                KeycloakSsoProvisionedUser::STATUS_DELETED,
+            ])->requirePresence('lifecycle_status', 'create')->notEmptyString('lifecycle_status')
+            ->allowEmptyDateTime('last_seen')
+            ->allowEmptyDateTime('last_checked')
+            ->allowEmptyDateTime('absent_since')
+            ->allowEmptyDateTime('deprovisioned_at')
+            ->allowEmptyDateTime('deletion_eligible_at')
+            ->scalar('deprovision_reason')->inList('deprovision_reason', [
+                KeycloakSsoProvisionedUser::REASON_DISABLED,
+                KeycloakSsoProvisionedUser::REASON_DELETED,
+            ])->maxLength('deprovision_reason', 32)
+            ->allowEmptyString('deprovision_reason');
 
         return $validator;
     }

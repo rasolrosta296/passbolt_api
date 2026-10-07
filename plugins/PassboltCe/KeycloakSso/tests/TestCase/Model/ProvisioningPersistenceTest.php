@@ -13,6 +13,7 @@ use Cake\Datasource\Exception\RecordNotFoundException;
 use Cake\ORM\TableRegistry;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoGroupMembership;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedGroup;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedUser;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisioningEvent;
 use Passbolt\KeycloakSso\Test\Lib\KeycloakSsoIntegrationTestCase;
 
@@ -62,6 +63,7 @@ final class ProvisioningPersistenceTest extends KeycloakSsoIntegrationTestCase
             'subject' => 'e2bc1228-043a-4512-8a91-f08683e55e53',
             'email_at_provisioning' => 'provisioned@example.test',
             'source_event_id' => '8d020e76-4951-58d2-b68e-99e2fc1053f8',
+            'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_ACTIVE,
         ];
         $first = $table->newEntity(
             ['id' => UuidFactory::uuid(), 'user_id' => $user->id] + $base,

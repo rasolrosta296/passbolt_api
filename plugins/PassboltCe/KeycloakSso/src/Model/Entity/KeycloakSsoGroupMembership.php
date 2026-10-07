@@ -11,6 +11,7 @@ use Cake\ORM\Entity;
  * @property string $user_id
  * @property string $status
  * @property string|null $failure_code
+ * @property \Cake\I18n\DateTime|null $revoked
  */
 final class KeycloakSsoGroupMembership extends Entity
 {
@@ -18,6 +19,7 @@ final class KeycloakSsoGroupMembership extends Entity
     public const STATUS_PENDING_CRYPTO = 'pending_crypto';
     public const STATUS_ACTIVE = 'active';
     public const STATUS_FAILED = 'failed';
+    public const STATUS_REVOKED = 'revoked';
 
     protected array $_accessible = ['*' => false];
 }

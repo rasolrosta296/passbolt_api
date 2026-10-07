@@ -20,6 +20,10 @@ URI must use that same origin when Passbolt full-base-URL enforcement is active.
 | `KEYCLOAK_SSO_RELEASE_AMR` | No | Optional. Empty/unset disables AMR enforcement. Otherwise a JSON array of 1–16 unique strings, each 1–64 bytes with no surrounding whitespace. Every value is required exactly. |
 | `KEYCLOAK_SSO_SERVER_SHARE_ACTIVE_KEY_ID` | No | Active KEK identifier, 1–64 lowercase ASCII letters, digits, dot, underscore, or hyphen. It must exist in the key ring. |
 | `KEYCLOAK_SSO_SERVER_SHARE_KEYRING` | Yes | JSON object of 1–16 key-ID to canonical-base64 values. Each value decodes to exactly 32 random bytes. Only the active ID encrypts; retained older IDs decrypt during rotation. |
+| `KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED` | No | Explicit boolean gate for Keycloak group mapping and membership additions. |
+| `KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED` | No | Independent explicit boolean gate for removing plugin-managed memberships absent from a complete Keycloak response. |
+| `KEYCLOAK_SSO_DEPROVISIONING_ENABLED` | No | Independent explicit boolean gate for authoritative disable/delete containment. Missing or ambiguous values fail closed. |
+| `KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS` | No | Quarantine before an absent user becomes deletion-eligible; defaults to 604800 and must be 3600–2592000 seconds. |
 
 Use placeholders such as `<OIDC_CLIENT_SECRET>`, `<BASE64_32_BYTE_KEY>`, and
 `{"kek-2026-01":"<BASE64_32_BYTE_KEY>"}` in templates. Generate real values

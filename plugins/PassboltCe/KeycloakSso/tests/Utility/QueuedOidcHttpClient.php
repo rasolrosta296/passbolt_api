@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Test\Utility;
 
 use Passbolt\KeycloakSso\Utility\Http\OidcHttpClientInterface;
+use Throwable;
 
 final class QueuedOidcHttpClient implements OidcHttpClientInterface
 {
@@ -12,7 +13,7 @@ final class QueuedOidcHttpClient implements OidcHttpClientInterface
      */
     public array $requests = [];
 
-    /** @param list<array<mixed>> $responses Responses returned in order. */
+    /** @param list<array<mixed>|Throwable> $responses Responses returned in order. */
     public function __construct(private array $responses)
     {
     }
@@ -26,6 +27,11 @@ final class QueuedOidcHttpClient implements OidcHttpClientInterface
     {
         $this->requests[] = compact('method', 'url', 'form', 'headers');
 
-        return array_shift($this->responses) ?? [];
+        $response = array_shift($this->responses) ?? [];
+        if ($response instanceof Throwable) {
+            throw $response;
+        }
+
+        return $response;
     }
 }

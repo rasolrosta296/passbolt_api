@@ -6,6 +6,7 @@ namespace Passbolt\KeycloakSso\Controller;
 use App\Controller\AppController;
 use Cake\Http\Exception\NotFoundException;
 use Passbolt\KeycloakSso\Configuration\GroupProvisioningConfigurationService;
+use Passbolt\KeycloakSso\Configuration\OidcConfigurationService;
 use Passbolt\KeycloakSso\Service\Identity\AuthenticatedPassboltSessionService;
 use Passbolt\KeycloakSso\Service\Provisioning\GroupProvisioningQueueService;
 
@@ -19,7 +20,7 @@ final class GroupProvisioningController extends AppController
         $userId = $this->activeUserId();
         $this->noStore();
         $this->success(__('Pending Keycloak group provisioning requests.'), [
-            'items' => (new GroupProvisioningQueueService())->pendingForManager($userId),
+            'items' => $this->queue()->pendingForManager($userId),
         ]);
     }
 
@@ -29,7 +30,7 @@ final class GroupProvisioningController extends AppController
         $this->assertJson();
         $this->assertFeatureEnabled();
         $userId = $this->activeUserId();
-        (new GroupProvisioningQueueService())->complete($membershipId, $userId);
+        $this->queue()->complete($membershipId, $userId);
         $this->noStore();
         $this->success(__('The Keycloak group provisioning request was completed.'));
     }
@@ -56,5 +57,11 @@ final class GroupProvisioningController extends AppController
         $this->setResponse($this->getResponse()
             ->withHeader('Cache-Control', 'no-store')
             ->withHeader('Pragma', 'no-cache'));
+    }
+
+    /** Build a queue constrained to the exact strictly validated configured issuer. */
+    private function queue(): GroupProvisioningQueueService
+    {
+        return new GroupProvisioningQueueService((new OidcConfigurationService())->load()->issuer);
     }
 }

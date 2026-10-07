@@ -5,6 +5,6 @@ namespace Passbolt\KeycloakSso\Error\Exception;
 
 use RuntimeException;
 
-final class OidcNetworkException extends RuntimeException
+class OidcNetworkException extends RuntimeException
 {
 }

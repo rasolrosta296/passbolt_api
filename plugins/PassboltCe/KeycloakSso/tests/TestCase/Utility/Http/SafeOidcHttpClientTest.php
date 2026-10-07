@@ -7,6 +7,7 @@ use Cake\Http\Client;
 use Cake\Http\Client\AdapterInterface;
 use Cake\Http\Client\Response;
 use Cake\TestSuite\TestCase;
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Error\Exception\OidcNetworkException;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Test\Utility\StaticHostResolver;
@@ -82,6 +83,27 @@ final class SafeOidcHttpClientTest extends TestCase
 
         $this->expectException(OidcNetworkException::class);
         $client->requestJson('GET', 'https://keyclock.gobaz.ir/realms/passbolt/.well-known/openid-configuration');
+    }
+
+    public function testPreservesUnsuccessfulStatusWithoutResponseBody(): void
+    {
+        $response = $this->createMock(Response::class);
+        $response->method('getStatusCode')->willReturn(404);
+        $cakeClient = $this->createMock(Client::class);
+        $cakeClient->method('get')->willReturn($response);
+        $client = new SafeOidcHttpClient(
+            $this->configuration(),
+            $cakeClient,
+            new StaticHostResolver(['203.0.113.10'])
+        );
+
+        try {
+            $client->requestJson('GET', 'https://keyclock.gobaz.ir/admin/realms/passbolt/users/missing');
+            $this->fail('Expected an HTTP status exception.');
+        } catch (OidcHttpStatusException $exception) {
+            $this->assertSame(404, $exception->status);
+            $this->assertStringNotContainsString('missing', $exception->getMessage());
+        }
     }
 
     public function testRejectsOversizedResponse(): void

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Service\Provisioning;
 
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Error\Exception\ProvisioningException;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventPageDto;
@@ -102,6 +103,49 @@ final class KeycloakProvisioningApiService
             $document['firstName'],
             $document['lastName']
         );
+    }
+
+    /**
+     * Retrieve an exact user, treating only an authenticated Admin API 404 as absence.
+     *
+     * Network failures, authorization failures, invalid documents, and all other
+     * statuses remain errors and can never be interpreted as deletion.
+     */
+    public function userOrNull(string $subject): ?KeycloakProvisioningUserDto
+    {
+        try {
+            return $this->user($subject);
+        } catch (OidcHttpStatusException $exception) {
+            if ($exception->status === 404) {
+                return null;
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Prove the configured Admin user collection is reachable before interpreting individual 404s.
+     *
+     * A reverse proxy or path configuration returning 404 for the whole Admin API must never be
+     * mistaken for deletion of every provisioned user.
+     */
+    public function assertUserDirectoryAvailable(): void
+    {
+        $query = http_build_query([
+            'briefRepresentation' => 'true',
+            'first' => 0,
+            'max' => 1,
+        ], '', '&', PHP_QUERY_RFC3986);
+        $document = $this->httpClient->requestJson(
+            'GET',
+            $this->configuration->adminApiBaseUrl . '/users?' . $query,
+            [],
+            $this->authorizationHeader()
+        );
+        if (!array_is_list($document)) {
+            throw new ProvisioningException('Keycloak returned an invalid user collection preflight.');
+        }
     }
 
     /**

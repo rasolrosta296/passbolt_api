@@ -17,13 +17,31 @@ use Passbolt\KeycloakSso\Test\Lib\KeycloakSsoIntegrationTestCase;
 
 final class GroupProvisioningControllerTest extends KeycloakSsoIntegrationTestCase
 {
+    private const ISSUER = 'https://keyclock.gobaz.ir/realms/passbolt';
+
     private string|false $previousEnabled;
+
+    /**
+     * @var array<string, string|false>
+     */
+    private array $previousOidcEnvironment = [];
 
     public function setUp(): void
     {
         parent::setUp();
         $this->previousEnabled = getenv(KeycloakSsoEnvironment::GROUP_PROVISIONING_ENABLED);
         putenv(KeycloakSsoEnvironment::GROUP_PROVISIONING_ENABLED . '=true');
+        $environment = [
+            KeycloakSsoEnvironment::ISSUER => self::ISSUER,
+            KeycloakSsoEnvironment::CLIENT_ID => 'test-client',
+            KeycloakSsoEnvironment::CLIENT_SECRET => 'test-client-secret',
+            KeycloakSsoEnvironment::REDIRECT_URI => 'https://passbolt.example.test/auth/keycloak/callback',
+            KeycloakSsoEnvironment::TRANSACTION_ENCRYPTION_KEY => base64_encode(str_repeat('k', 32)),
+        ];
+        foreach ($environment as $name => $value) {
+            $this->previousOidcEnvironment[$name] = getenv($name);
+            putenv($name . '=' . $value);
+        }
     }
 
     public function tearDown(): void
@@ -31,6 +49,9 @@ final class GroupProvisioningControllerTest extends KeycloakSsoIntegrationTestCa
         putenv($this->previousEnabled === false
             ? KeycloakSsoEnvironment::GROUP_PROVISIONING_ENABLED
             : KeycloakSsoEnvironment::GROUP_PROVISIONING_ENABLED . '=' . $this->previousEnabled);
+        foreach ($this->previousOidcEnvironment as $name => $value) {
+            putenv($value === false ? $name : $name . '=' . $value);
+        }
         parent::tearDown();
     }
 
@@ -112,6 +133,23 @@ final class GroupProvisioningControllerTest extends KeycloakSsoIntegrationTestCa
         );
     }
 
+    public function testPendingQueueAndCompletionRejectAnotherIssuerNamespace(): void
+    {
+        [$manager, , , $membership] = $this->pendingMembership('https://keyclock.gobaz.ir/realms/foreign');
+        $this->logInAs($manager);
+
+        $this->getJson('/auth/keycloak/provisioning/groups/pending.json');
+        $this->assertSuccess();
+        $this->assertSame([], (array)$this->_responseJsonBody->items);
+
+        $this->postJson('/auth/keycloak/provisioning/groups/complete/' . $membership->id . '.json');
+        $this->assertResponseCode(400);
+        $this->assertSame(
+            KeycloakSsoGroupMembership::STATUS_PENDING_CRYPTO,
+            $this->memberships()->get($membership->id)->get('status')
+        );
+    }
+
     public function testDisabledTargetIsHiddenAndCannotBeCompleted(): void
     {
         [$manager, $target, $group, $membership] = $this->pendingMembership();
@@ -177,7 +215,7 @@ final class GroupProvisioningControllerTest extends KeycloakSsoIntegrationTestCa
      *   3: KeycloakSsoGroupMembership
      * }
      */
-    private function pendingMembership(): array
+    private function pendingMembership(string $issuer = self::ISSUER): array
     {
         /** @var \App\Model\Entity\User $manager */
         $manager = UserFactory::make()->user()->active()->notDisabled()->persist();
@@ -189,7 +227,7 @@ final class GroupProvisioningControllerTest extends KeycloakSsoIntegrationTestCa
         $mapping = $this->mappedGroups()->newEntity([
             'id' => UuidFactory::uuid(),
             'group_id' => $group->id,
-            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'issuer' => $issuer,
             'keycloak_group_id' => 'engineering-id',
             'keycloak_group_path' => '/Engineering',
         ], ['accessibleFields' => ['*' => true]]);

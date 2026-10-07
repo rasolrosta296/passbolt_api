@@ -16,6 +16,7 @@ use Passbolt\KeycloakSso\Error\Exception\ProvisioningException;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakProvisioningUserDto;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedUser;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisioningEvent;
 use Passbolt\KeycloakSso\Service\Audit\ProvisioningAuditService;
 use Throwable;
@@ -320,6 +321,9 @@ final class ProvisionKeycloakUserService
                 'subject' => $event->subject,
                 'email_at_provisioning' => $normalizedEmail,
                 'source_event_id' => $event->eventId,
+                'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_ACTIVE,
+                'last_seen' => DateTime::now(),
+                'last_checked' => DateTime::now(),
                 ] as $field => $value
             ) {
                 $provenance->set($field, $value);

@@ -3,8 +3,10 @@ declare(strict_types=1);
 
 namespace Passbolt\KeycloakSso\Command;
 
+use App\Service\Resources\ResourcesExpireResourcesServiceInterface;
 use Cake\Command\Command;
 use Cake\Console\Arguments;
+use Cake\Console\CommandFactoryInterface;
 use Cake\Console\ConsoleIo;
 use Cake\Console\ConsoleOptionParser;
 use Passbolt\KeycloakSso\Configuration\GroupProvisioningConfigurationService;
@@ -20,6 +22,14 @@ use Throwable;
 
 final class KeycloakSsoSyncGroupsCommand extends Command
 {
+    /** Construct the command with Passbolt's configured resource-expiry policy. */
+    public function __construct(
+        private readonly ResourcesExpireResourcesServiceInterface $resourcesExpiry,
+        ?CommandFactoryInterface $factory = null,
+    ) {
+        parent::__construct($factory);
+    }
+
     /** Return the command description. */
     public static function getDescription(): string
     {
@@ -40,7 +50,8 @@ final class KeycloakSsoSyncGroupsCommand extends Command
     public function execute(Arguments $args, ConsoleIo $io): ?int
     {
         try {
-            (new GroupProvisioningConfigurationService())->assertEnabled();
+            $groupConfiguration = new GroupProvisioningConfigurationService();
+            $groupConfiguration->assertEnabled();
             $oidc = (new OidcConfigurationService())->load();
             $provisioning = (new ProvisioningConfigurationService())->load();
             $http = new SafeOidcHttpClient($oidc);
@@ -49,7 +60,9 @@ final class KeycloakSsoSyncGroupsCommand extends Command
             $counts = (new ProvisioningGroupSyncService(
                 $provisioning,
                 $api,
-                new GroupProvisioningAuditService()
+                $this->resourcesExpiry,
+                new GroupProvisioningAuditService(),
+                $groupConfiguration->reconciliationEnabled()
             ))
                 ->run((bool)$args->getOption('dry-run'));
         } catch (Throwable) {
@@ -61,7 +74,7 @@ final class KeycloakSsoSyncGroupsCommand extends Command
         $summary = sprintf(
             'Keycloak group synchronization complete: groups_created=%d groups_would_create=%d ' .
             'memberships_added=%d memberships_would_add=%d pending_activation=%d pending_crypto=%d ' .
-            'existing=%d skipped=%d failed=%d.',
+            'existing=%d memberships_removed=%d memberships_would_remove=%d skipped=%d failed=%d.',
             $counts[ProvisioningGroupSyncService::OUTCOME_GROUP_CREATED],
             $counts[ProvisioningGroupSyncService::OUTCOME_GROUP_WOULD_CREATE],
             $counts[ProvisioningGroupSyncService::OUTCOME_MEMBERSHIP_ADDED],
@@ -69,6 +82,8 @@ final class KeycloakSsoSyncGroupsCommand extends Command
             $counts[ProvisioningGroupSyncService::OUTCOME_PENDING_ACTIVATION],
             $counts[ProvisioningGroupSyncService::OUTCOME_PENDING_CRYPTO],
             $counts[ProvisioningGroupSyncService::OUTCOME_EXISTING],
+            $counts[ProvisioningGroupSyncService::OUTCOME_MEMBERSHIP_REMOVED],
+            $counts[ProvisioningGroupSyncService::OUTCOME_MEMBERSHIP_WOULD_REMOVE],
             $counts[ProvisioningGroupSyncService::OUTCOME_SKIPPED],
             $counts[ProvisioningGroupSyncService::OUTCOME_FAILED]
         );

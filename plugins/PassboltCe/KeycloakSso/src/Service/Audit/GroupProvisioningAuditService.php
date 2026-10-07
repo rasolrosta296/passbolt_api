@@ -12,6 +12,7 @@ final class GroupProvisioningAuditService
         'membership_added',
         'membership_completed',
         'membership_pending',
+        'membership_removed',
         'failed',
     ];
     private const CATEGORIES = ['none', 'activation', 'client_crypto', 'collision', 'unavailable', 'unexpected'];

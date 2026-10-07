@@ -11,7 +11,7 @@ user and the normal one-time Passbolt setup invitation. It does not:
 - authenticate the user to Passbolt;
 - create a Passbolt session, JWT, refresh token, OpenPGP key, or SSO enrollment;
 - map Keycloak roles to Passbolt administrator privileges;
-- update, move, merge, disable, or delete existing Passbolt users.
+- move or merge existing Passbolt users.
 
 The user must complete the normal Passbolt client-side OpenPGP setup. The user
 must subsequently complete the existing GPGAuth + fresh OIDC identity-link and
@@ -80,6 +80,9 @@ KEYCLOAK_SSO_PROVISIONING_INITIAL_LOOKBACK_SECONDS=86400
 KEYCLOAK_SSO_PROVISIONING_OVERLAP_SECONDS=300
 KEYCLOAK_SSO_PROVISIONING_BATCH_SIZE=100
 KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=false
+KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED=false
+KEYCLOAK_SSO_DEPROVISIONING_ENABLED=false
+KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS=604800
 ```
 
 The actor UUID identifies the active Passbolt administrator recorded as the
@@ -126,6 +129,17 @@ scheduler. Concurrent executions are safe: the event claim and user creation
 are serialized at the database level, and uniqueness constraints remain the
 final authority.
 
+For authoritative lifecycle operation, schedule separate bounded jobs in this
+order and alert on every nonzero exit:
+
+1. `keycloak_sso_provision_users`
+2. `keycloak_sso_reconcile_users`
+3. `keycloak_sso_sync_groups`
+
+The reconciliation interval is the maximum expected propagation delay for a
+Keycloak disable, delete, or group-membership removal. Do not run permanent
+deletion from an unattended wildcard or bulk loop.
+
 ## Group synchronization and end-to-end encryption
 
 When `KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=true`, preview group changes with:
@@ -152,21 +166,74 @@ Pending cryptographic memberships require an authenticated and unlocked group
 manager client to use the normal Passbolt sharing operation and encrypt each
 required secret to the new user's OpenPGP public key.
 
-The first release is additive only. It does not remove memberships, delete or
-rename groups, translate Keycloak roles into Passbolt privileges, or infer a
-mapping from a mutable group name.
+When `KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED=true`, a complete successful
+Keycloak group response is authoritative for plugin-managed memberships. A
+missing assignment is removed through Passbolt's normal group-user deletion
+service, which preserves secrets when the user retains access by another path
+and applies the deployment's configured resource-expiry policy to access that
+is actually lost.
+Provider errors, incomplete pagination, malformed responses, and outages never
+produce removals. Manually managed memberships that have no plugin provenance
+are never removed. Empty mapped groups and group names are retained; automatic
+group deletion or rename could affect resource ownership and is deliberately
+outside this lifecycle.
 
 The command reports counts only. It never prints Keycloak event IDs, subjects,
 emails, access tokens, or client credentials.
 
+## Deprovisioning and deletion
+
+Deprovisioning is independently disabled by default. Once
+`KEYCLOAK_SSO_DEPROVISIONING_ENABLED=true`, run:
+
+```text
+bin/cake keycloak_sso_reconcile_users --dry-run
+bin/cake keycloak_sso_reconcile_users
+```
+
+The command performs an exact current-user Admin API lookup for every
+provisioned subject. `enabled=false` or an authenticated exact 404 immediately:
+
+- disables the Passbolt user;
+- applies the deployment's configured resource-expiry policy to the disabled
+  user's affected resources;
+- invalidates pending cryptographic transactions and overwrites/revokes KS;
+- removes the Keycloak identity link;
+- removes plugin-managed group memberships.
+
+Only an exact 404 is interpreted as absence. TLS, DNS, timeout, 401, 403, 429,
+5xx, malformed JSON, and all other failures leave account/access state
+unchanged and make the command fail. Before checking individual users, the
+command requires a successful Admin user-collection preflight so a proxy or
+path returning 404 for the complete Admin API cannot masquerade as mass user
+deletion. A disabled user is not eligible for
+automatic deletion. An absent user enters quarantine for the configured grace
+period (seven days by default). Reappearance never automatically re-enables the
+Passbolt account or recreates SSO material; an administrator must review it and
+the user must enroll again.
+
+After the grace period, permanent Passbolt soft deletion requires a fresh
+Keycloak 404 and explicit one-user approval:
+
+```text
+bin/cake keycloak_sso_delete_user --user-id <PASSBOLT_USER_UUID> --confirm DELETE
+```
+
+Native Passbolt delete rules remain authoritative. If the user is an owner or
+sole group manager requiring transfer, deletion fails closed. Perform the
+normal Passbolt administrative ownership/manager transfer and retry. Never
+schedule this command with an unreviewed list of user identifiers.
+
 ## Operational limitations
 
-- This release creates users only; it never changes or deprovisions them.
 - A Keycloak email or name change does not update an existing Passbolt user.
-- A Keycloak disable/delete does not disable/delete the Passbolt user.
+- Re-enabling or recreating a Keycloak subject does not automatically re-enable
+  a deprovisioned Passbolt user.
 - A collision with any existing Passbolt username, including a soft-deleted
   user, is terminal and requires administrator review.
 - Provisioning does not link the Keycloak identity. The user must finish the
   normal Passbolt invitation and then use the existing explicit linking flow.
 - Fully automatic server-side membership is intentionally impossible once a
   group contains resources that are not already encrypted for the new user.
+- Keycloak group rename/deletion does not automatically rename/delete the
+  Passbolt group. Membership access is still reconciled by immutable group ID.
