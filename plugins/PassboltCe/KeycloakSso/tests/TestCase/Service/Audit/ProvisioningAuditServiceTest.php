@@ -50,4 +50,16 @@ final class ProvisioningAuditServiceTest extends TestCase
         $this->assertStringContainsString('category=unexpected', $output);
         $this->assertStringContainsString('user=none', $output);
     }
+
+    public function testLogsDeletedBeforeProvisioningAsSanitizedAbsence(): void
+    {
+        (new ProvisioningAuditService())->record('skipped', 'absent');
+
+        $engine = Log::engine(self::LOGGER);
+        $this->assertInstanceOf(ArrayLog::class, $engine);
+        $output = implode("\n", $engine->read());
+        $this->assertStringContainsString('event=skipped', $output);
+        $this->assertStringContainsString('category=absent', $output);
+        $this->assertStringContainsString('user=none', $output);
+    }
 }

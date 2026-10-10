@@ -8,6 +8,7 @@ use App\Test\Factory\RoleFactory;
 use App\Test\Factory\UserFactory;
 use App\Utility\UuidFactory;
 use Cake\ORM\TableRegistry;
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisioningEvent;
@@ -71,6 +72,40 @@ final class ProvisioningSyncServiceTest extends KeycloakSsoIntegrationTestCase
             $http->requests[1]['url']
         );
         $this->assertCount(2, $http->requests);
+    }
+
+    public function testPreviouslyFailedEventForDeletedKeycloakUserBecomesTerminalSkip(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+        $event = $this->eventDocument();
+        $table = TableRegistry::getTableLocator()->get('Passbolt/KeycloakSso.KeycloakSsoProvisioningEvents');
+        $table->saveOrFail($table->newEntity([
+            'id' => UuidFactory::uuid(),
+            'event_id' => $event['id'],
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'subject' => substr($event['resourcePath'], strlen('users/')),
+            'event_time' => $event['time'],
+            'operation' => $event['operationType'],
+            'status' => KeycloakSsoProvisioningEvent::STATUS_FAILED,
+            'failure_code' => 'keycloak_unavailable',
+        ], ['accessibleFields' => ['*' => true]]));
+        $http = new QueuedOidcHttpClient([
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(404),
+            [$event],
+        ]);
+
+        $counts = $this->service($actor->id, $http)->run();
+
+        $this->assertSame(1, $counts[ProvisionKeycloakUserService::OUTCOME_SKIPPED]);
+        $this->assertSame(1, $counts[ProvisionKeycloakUserService::OUTCOME_DUPLICATE]);
+        $this->assertSame(0, $counts[ProvisionKeycloakUserService::OUTCOME_FAILED]);
+        $saved = $table->find()->firstOrFail();
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_SKIPPED, $saved->get('status'));
+        $this->assertSame('user_absent', $saved->get('failure_code'));
+        $this->assertCount(3, $http->requests);
     }
 
     public function testPaginatesWhenRawPageReachesConfiguredBatchSize(): void

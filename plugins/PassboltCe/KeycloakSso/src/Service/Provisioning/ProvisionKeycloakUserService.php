@@ -54,7 +54,13 @@ final class ProvisionKeycloakUserService
         }
 
         try {
-            $user = $this->api->user($event->subject);
+            $user = $this->api->userOrNull($event->subject);
+            if ($user === null) {
+                $this->finish($event, KeycloakSsoProvisioningEvent::STATUS_SKIPPED, 'user_absent');
+                $this->audit->record('skipped', 'absent');
+
+                return self::OUTCOME_SKIPPED;
+            }
             $eligibility = $this->eligibilityFailure($user);
             if ($eligibility !== null) {
                 $this->finish($event, KeycloakSsoProvisioningEvent::STATUS_SKIPPED, $eligibility);
@@ -126,7 +132,10 @@ final class ProvisionKeycloakUserService
     private function dryRun(KeycloakAdminEventDto $event): string
     {
         try {
-            $user = $this->api->user($event->subject);
+            $user = $this->api->userOrNull($event->subject);
+            if ($user === null) {
+                return self::OUTCOME_SKIPPED;
+            }
             $eligibility = $this->eligibilityFailure($user);
             if ($eligibility !== null) {
                 return self::OUTCOME_SKIPPED;
@@ -356,7 +365,7 @@ final class ProvisionKeycloakUserService
     private function fixedFailureCode(string $code): string
     {
         $allowed = [
-            'user_disabled', 'email_unverified', 'invalid_profile', 'subject_already_provisioned',
+            'user_absent', 'user_disabled', 'email_unverified', 'invalid_profile', 'subject_already_provisioned',
             'email_collision', 'actor_unavailable', 'event_claim_lost', 'event_identity_mismatch',
             'event_persistence_failed', 'concurrent_collision', 'keycloak_unavailable',
             'persistence_failed', 'stale_claim', 'unexpected_failure',
@@ -369,6 +378,7 @@ final class ProvisionKeycloakUserService
     private function auditCategory(string $code): string
     {
         return match ($code) {
+            'user_absent' => 'absent',
             'user_disabled' => 'disabled',
             'email_unverified' => 'unverified_email',
             'invalid_profile' => 'invalid_profile',

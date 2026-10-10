@@ -15,6 +15,7 @@ use App\Test\Lib\Model\EmailQueueTrait;
 use Cake\Event\EventManager;
 use Cake\ORM\TableRegistry;
 use Passbolt\EmailDigest\Test\Factory\EmailQueueFactory;
+use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
@@ -90,6 +91,57 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
             'username' => 'new.user@example.test',
         ])->count());
         $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_SKIPPED, $this->savedEventStatus());
+    }
+
+    public function testDeletedKeycloakUserIsTerminallySkippedWithoutCreatingUser(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+
+        $outcome = $this->service($actor->id, [
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(404),
+        ])->process($this->event());
+
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_SKIPPED, $outcome);
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_SKIPPED, $this->savedEventStatus());
+        $this->assertSame('user_absent', $this->savedEventFailureCode());
+        $this->assertSame(0, TableRegistry::getTableLocator()->get('Users')->find()->where([
+            'username' => 'new.user@example.test',
+        ])->count());
+    }
+
+    public function testDeletedKeycloakUserDryRunIsSkippedWithoutPersistingCheckpoint(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+
+        $outcome = $this->service($actor->id, [
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(404),
+        ])->process($this->event(), true);
+
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_SKIPPED, $outcome);
+        $this->assertSame(0, TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoProvisioningEvents')->find()->count());
+    }
+
+    public function testKeycloakUserLookupFailureRemainsRetryableFailure(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+
+        $outcome = $this->service($actor->id, [
+            ['access_token' => 'service-token', 'token_type' => 'Bearer'],
+            new OidcHttpStatusException(503),
+        ])->process($this->event());
+
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_FAILED, $outcome);
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_FAILED, $this->savedEventStatus());
+        $this->assertSame('keycloak_unavailable', $this->savedEventFailureCode());
     }
 
     public function testDeletedPassboltUsernameStillFailsClosedAsCollision(): void
@@ -262,5 +314,12 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
         return (string)TableRegistry::getTableLocator()
             ->get('Passbolt/KeycloakSso.KeycloakSsoProvisioningEvents')
             ->find()->firstOrFail()->get('status');
+    }
+
+    private function savedEventFailureCode(): string
+    {
+        return (string)TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoProvisioningEvents')
+            ->find()->firstOrFail()->get('failure_code');
     }
 }

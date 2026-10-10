@@ -10,6 +10,7 @@ final class ProvisioningAuditService
     private const EVENTS = ['provisioned', 'skipped', 'collision', 'failed'];
     private const CATEGORIES = [
         'none',
+        'absent',
         'disabled',
         'unverified_email',
         'invalid_profile',
