@@ -60,6 +60,7 @@ COPY src/BaseSolutionBootstrapper.php /usr/share/php/passbolt/src/BaseSolutionBo
 COPY src/Middleware/ContentSecurityPolicyExtension.php /usr/share/php/passbolt/src/Middleware/ContentSecurityPolicyExtension.php
 COPY src/Middleware/ContentSecurityPolicyMiddleware.php /usr/share/php/passbolt/src/Middleware/ContentSecurityPolicyMiddleware.php
 COPY --chown=root:www-data --chmod=0640 config/Migrations/*KeycloakSso*.php /etc/passbolt/Migrations/
+COPY --chown=root:root --chmod=0644 docker/keycloak-sso/passbolt-keycloak-sso.cron /etc/cron.d/passbolt-keycloak-sso
 
 RUN chown -R root:www-data /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso \
     && find /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso -type d -exec chmod 0750 {} + \
@@ -72,5 +73,7 @@ RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(is_a("Cake\\ORM\\Query\\SelectQuery", "Cake\\ORM\\Query", true) ? 0 : 1);' \
     && test -r /etc/passbolt/Migrations/20260928120000_CreateKeycloakSsoGroupProvisioning.php \
     && test -r /etc/passbolt/Migrations/20261006120000_AddKeycloakSsoAuthoritativeLifecycle.php \
+    && test "$(stat -c '%a:%U:%G' /etc/cron.d/passbolt-keycloak-sso)" = '644:root:root' \
+    && grep -Fq 'keycloak_sso_provision_users && bin/cake keycloak_sso_reconcile_users && bin/cake keycloak_sso_sync_groups' /etc/cron.d/passbolt-keycloak-sso \
     && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \
     && test ! -e /usr/share/php/passbolt/vendor/phpunit

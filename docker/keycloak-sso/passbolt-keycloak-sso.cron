@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/bin:/usr/local/bin:/usr/bin
+
+* * * * * root /usr/bin/flock --nonblock /run/passbolt-keycloak-sso-sync.lock /usr/bin/su -s /bin/bash -c '. /etc/environment && cd /usr/share/php/passbolt && bin/cake keycloak_sso_provision_users && bin/cake keycloak_sso_reconcile_users && bin/cake keycloak_sso_sync_groups' www-data >/proc/1/fd/1 2>&1
