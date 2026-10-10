@@ -59,11 +59,7 @@ COPY plugins/PassboltCe/KeycloakSso/templates /usr/share/php/passbolt/plugins/Pa
 COPY src/BaseSolutionBootstrapper.php /usr/share/php/passbolt/src/BaseSolutionBootstrapper.php
 COPY src/Middleware/ContentSecurityPolicyExtension.php /usr/share/php/passbolt/src/Middleware/ContentSecurityPolicyExtension.php
 COPY src/Middleware/ContentSecurityPolicyMiddleware.php /usr/share/php/passbolt/src/Middleware/ContentSecurityPolicyMiddleware.php
-COPY --chown=root:www-data --chmod=0640 config/Migrations/20260903120000_CreateKeycloakSsoTransactions.php /etc/passbolt/Migrations/
-COPY --chown=root:www-data --chmod=0640 config/Migrations/20260904120000_CreateKeycloakSsoIdentities.php /etc/passbolt/Migrations/
-COPY --chown=root:www-data --chmod=0640 config/Migrations/20260905120000_CreateKeycloakSsoCryptoEnrollments.php /etc/passbolt/Migrations/
-COPY --chown=root:www-data --chmod=0640 config/Migrations/20260906120000_CreateKeycloakSsoRotationBarriers.php /etc/passbolt/Migrations/
-COPY --chown=root:www-data --chmod=0640 config/Migrations/20260926120000_CreateKeycloakSsoProvisioning.php /etc/passbolt/Migrations/
+COPY --chown=root:www-data --chmod=0640 config/Migrations/*KeycloakSso*.php /etc/passbolt/Migrations/
 
 RUN chown -R root:www-data /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso \
     && find /usr/share/php/passbolt/plugins/PassboltCe/KeycloakSso -type d -exec chmod 0750 {} + \
@@ -74,5 +70,7 @@ WORKDIR /usr/share/php/passbolt
 RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);' \
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(class_exists("Passbolt\\KeycloakSso\\KeycloakSsoPlugin") ? 0 : 1);' \
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(is_a("Cake\\ORM\\Query\\SelectQuery", "Cake\\ORM\\Query", true) ? 0 : 1);' \
+    && test -r /etc/passbolt/Migrations/20260928120000_CreateKeycloakSsoGroupProvisioning.php \
+    && test -r /etc/passbolt/Migrations/20261006120000_AddKeycloakSsoAuthoritativeLifecycle.php \
     && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \
     && test ! -e /usr/share/php/passbolt/vendor/phpunit
