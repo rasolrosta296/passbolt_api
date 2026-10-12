@@ -18,6 +18,17 @@ final class DeprovisioningConfigurationServiceTest extends TestCase
 
         $this->assertSame(DeprovisioningConfigurationDto::DEFAULT_GRACE_SECONDS, $configuration->graceSeconds);
         $this->assertSame('8d020e76-4951-58d2-b68e-99e2fc1053f8', $configuration->actorUserId);
+        $this->assertFalse($configuration->reactivationEnabled);
+    }
+
+    public function testLoadsExplicitAutomaticReactivationPolicy(): void
+    {
+        $environment = $this->environment();
+        $environment[KeycloakSsoEnvironment::REACTIVATION_ENABLED] = 'true';
+
+        $configuration = (new DeprovisioningConfigurationService())->load($environment);
+
+        $this->assertTrue($configuration->reactivationEnabled);
     }
 
     #[DataProvider('invalidProvider')]
@@ -35,6 +46,7 @@ final class DeprovisioningConfigurationServiceTest extends TestCase
             'too short' => [[KeycloakSsoEnvironment::DEPROVISIONING_GRACE_SECONDS => '3599']],
             'too long' => [[KeycloakSsoEnvironment::DEPROVISIONING_GRACE_SECONDS => '2592001']],
             'not integer' => [[KeycloakSsoEnvironment::DEPROVISIONING_GRACE_SECONDS => 'one-week']],
+            'ambiguous reactivation' => [[KeycloakSsoEnvironment::REACTIVATION_ENABLED => 'automatic']],
         ];
     }
 

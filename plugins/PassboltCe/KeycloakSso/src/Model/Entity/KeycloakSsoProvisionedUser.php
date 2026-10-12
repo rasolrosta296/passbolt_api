@@ -18,6 +18,7 @@ use Cake\ORM\Entity;
  * @property \Cake\I18n\DateTime|null $absent_since
  * @property \Cake\I18n\DateTime|null $deprovisioned_at
  * @property \Cake\I18n\DateTime|null $deletion_eligible_at
+ * @property \Cake\I18n\DateTime|null $managed_disabled_at
  * @property string|null $deprovision_reason
  */
 final class KeycloakSsoProvisionedUser extends Entity

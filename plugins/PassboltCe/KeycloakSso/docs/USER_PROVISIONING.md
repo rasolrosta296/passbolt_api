@@ -83,6 +83,7 @@ KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=false
 KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED=false
 KEYCLOAK_SSO_DEPROVISIONING_ENABLED=false
 KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS=604800
+KEYCLOAK_SSO_REACTIVATION_ENABLED=false
 ```
 
 The actor UUID identifies the active Passbolt administrator recorded as the
@@ -206,11 +207,27 @@ Only an exact 404 is interpreted as absence. TLS, DNS, timeout, 401, 403, 429,
 unchanged and make the command fail. Before checking individual users, the
 command requires a successful Admin user-collection preflight so a proxy or
 path returning 404 for the complete Admin API cannot masquerade as mass user
-deletion. A disabled user is not eligible for
-automatic deletion. An absent user enters quarantine for the configured grace
-period (seven days by default). Reappearance never automatically re-enables the
-Passbolt account or recreates SSO material; an administrator must review it and
-the user must enroll again.
+deletion. A disabled user is not eligible for automatic deletion. An absent
+user enters quarantine for the configured grace period (seven days by default).
+Reappearance after an exact Keycloak 404 never automatically re-enables the
+Passbolt account.
+
+Automatic reactivation is separately disabled by default. When
+`KEYCLOAK_SSO_REACTIVATION_ENABLED=true`, the reconciler can clear `disabled`
+only for the same immutable provisioned `(issuer, subject)` whose suspension
+was originally written and timestamp-marked by this plugin because Keycloak
+returned `enabled=false`. An existing or subsequently changed Passbolt-side
+suspension, a legacy unmarked suspension, a deleted/recreated Keycloak user,
+an inactive provisioning actor, or a deleted Passbolt user always fails closed
+and remains subject to administrator review.
+
+Reactivation restores only the active state of the same Passbolt account. It
+does not recreate the identity link, SSO enrollment/server share, sessions,
+JWTs, removed group memberships, or access whose encrypted secrets were
+expired during deprovisioning. The user must use normal Passbolt access, link
+the Keycloak identity again, and create a fresh browser-profile enrollment.
+Subsequent group synchronization may restore only memberships that still meet
+the normal Passbolt cryptographic sharing requirements.
 
 After the grace period, permanent Passbolt soft deletion requires a fresh
 Keycloak 404 and explicit one-user approval:
@@ -227,8 +244,10 @@ schedule this command with an unreviewed list of user identifiers.
 ## Operational limitations
 
 - A Keycloak email or name change does not update an existing Passbolt user.
-- Re-enabling or recreating a Keycloak subject does not automatically re-enable
-  a deprovisioned Passbolt user.
+- Re-enabling the same disabled Keycloak subject can re-enable only a matching
+  plugin-marked Passbolt suspension when the independent reactivation flag is
+  enabled. Recreated/previously absent subjects and Passbolt-admin suspensions
+  are never automatically re-enabled.
 - A collision with any existing Passbolt username, including a soft-deleted
   user, is terminal and requires administrator review.
 - Provisioning does not link the Keycloak identity. The user must finish the

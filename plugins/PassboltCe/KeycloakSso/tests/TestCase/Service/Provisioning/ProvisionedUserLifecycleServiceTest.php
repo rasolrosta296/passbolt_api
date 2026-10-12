@@ -62,6 +62,7 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
         $this->assertSame(KeycloakSsoProvisionedUser::STATUS_DEPROVISIONED, $provisioned->get('lifecycle_status'));
         $this->assertSame(KeycloakSsoProvisionedUser::REASON_DISABLED, $provisioned->get('deprovision_reason'));
         $this->assertNull($provisioned->get('deletion_eligible_at'));
+        $this->assertInstanceOf(DateTime::class, $provisioned->get('managed_disabled_at'));
     }
 
     public function testDisablingUserAppliesConfiguredResourceExpiryPolicy(): void
@@ -250,7 +251,7 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
             'deletion_eligible_at' => DateTime::yesterday(),
         ], ['user_id' => $user->id]);
 
-        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)])->run();
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
 
         $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
         $this->assertTrue($this->userById($user->id)->isDisabled());
@@ -267,12 +268,153 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
     {
         [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_ACTIVE);
 
-        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)])->run();
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
 
         $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
         $this->assertTrue($this->userById($user->id)->isDisabled());
         $this->assertSame(
             KeycloakSsoProvisionedUser::STATUS_REACTIVATION_REQUIRED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testManagedKeycloakSuspensionIsAutomaticallyReactivatedWhenExplicitlyEnabled(): void
+    {
+        [$actor, $user] = $this->users();
+        (new IdentityLinkPersistenceService())->create($user->id, new PendingIdentityLink(
+            self::ISSUER,
+            self::SUBJECT,
+            $user->username
+        ));
+        $now = new DateTime('2026-10-11 12:00:00');
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run(false, $now);
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)
+            ->run(false, $now->addMinutes(1));
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATED]);
+        $this->assertFalse($this->userById($user->id)->isDisabled());
+        $provisioned = $this->provisionedUsers()->find()->firstOrFail();
+        $this->assertSame(KeycloakSsoProvisionedUser::STATUS_ACTIVE, $provisioned->get('lifecycle_status'));
+        $this->assertNull($provisioned->get('deprovision_reason'));
+        $this->assertNull($provisioned->get('deprovisioned_at'));
+        $this->assertNull($provisioned->get('managed_disabled_at'));
+        $this->assertFalse($this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoIdentities')->exists([
+            'user_id' => $user->id,
+        ]));
+    }
+
+    public function testManagedReactivationDryRunDoesNotEnableUser(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run(true);
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_WOULD_REACTIVATE]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_DEPROVISIONED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testManagedSuspensionRequiresReviewWhenAutomaticReactivationIsDisabled(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)])->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_DEPROVISIONED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testEnablingPolicyLaterCanReactivateACompletedManagedSuspension(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+        $this->lifecycleService($actor, [$this->remoteUser(true)])->run();
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATED]);
+        $this->assertFalse($this->userById($user->id)->isDisabled());
+    }
+
+    public function testExistingPassboltSuspensionIsNeverAdoptedForAutomaticReactivation(): void
+    {
+        [$actor, $user] = $this->users(true);
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+        $this->assertNull($this->provisionedUsers()->find()->firstOrFail()->get('managed_disabled_at'));
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+    }
+
+    public function testChangedPassboltSuspensionIsNeverAutomaticallyReactivated(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+        $this->fetchTable('Users')->updateAll(['disabled' => DateTime::yesterday()], ['id' => $user->id]);
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+    }
+
+    public function testReviewRequiredSuspensionIsNeverAutomaticallyReactivated(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+        $this->provisionedUsers()->updateAll([
+            'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_REACTIVATION_REQUIRED,
+        ], ['user_id' => $user->id]);
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+    }
+
+    public function testIncompleteDeprovisioningCleanupIsNeverAutomaticallyReactivated(): void
+    {
+        [$actor, $user] = $this->users();
+        ResourceFactory::make()->withSecretRevisions()->withSecretsFor([$user])->persist();
+        $expiry = $this->createMock(ResourcesExpireResourcesServiceInterface::class);
+        $expiry->expects($this->once())->method('expireResourcesForSecrets')
+            ->willThrowException(new RuntimeException('expiry unavailable'));
+        $this->lifecycleService($actor, [$this->remoteUser(false)], $expiry, true)->run();
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_REACTIVATION_REQUIRED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testManagedReactivationRequiresAnActiveSeparateAdministratorActor(): void
+    {
+        [$actor, $user] = $this->users();
+        $this->lifecycleService($actor, [$this->remoteUser(false)], null, true)->run();
+        $this->fetchTable('Users')->updateAll(['disabled' => DateTime::now()], ['id' => $actor->id]);
+
+        $counts = $this->lifecycleService($actor, [$this->remoteUser(true)], null, true)->run();
+
+        $this->assertSame(1, $counts[ProvisionedUserLifecycleService::OUTCOME_FAILED]);
+        $this->assertTrue($this->userById($user->id)->isDisabled());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_DEPROVISIONED,
             $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
         );
     }
@@ -446,20 +588,29 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
         User $actor,
         array $responses,
         ?ResourcesExpireResourcesServiceInterface $resourcesExpiry = null,
+        bool $reactivationEnabled = false,
     ): ProvisionedUserLifecycleService {
         $resourcesExpiry ??= new ResourcesExpireResourcesFallbackServiceService();
 
         return new ProvisionedUserLifecycleService(
-            $this->lifecycleConfiguration($actor),
+            $this->lifecycleConfiguration($actor, $reactivationEnabled),
             $this->api($actor, $responses),
             new ManagedGroupAccessRemovalService($resourcesExpiry),
             $resourcesExpiry
         );
     }
 
-    private function lifecycleConfiguration(User $actor): DeprovisioningConfigurationDto
-    {
-        return new DeprovisioningConfigurationDto(self::ISSUER, $actor->id, 100, 3_600);
+    private function lifecycleConfiguration(
+        User $actor,
+        bool $reactivationEnabled = false
+    ): DeprovisioningConfigurationDto {
+        return new DeprovisioningConfigurationDto(
+            self::ISSUER,
+            $actor->id,
+            100,
+            3_600,
+            $reactivationEnabled
+        );
     }
 
     private function api(

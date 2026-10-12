@@ -15,6 +15,7 @@ final readonly class DeprovisioningConfigurationDto
         public string $actorUserId,
         public int $batchSize,
         public int $graceSeconds,
+        public bool $reactivationEnabled = false,
     ) {
     }
 }

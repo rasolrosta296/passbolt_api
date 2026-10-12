@@ -15,6 +15,7 @@ Migrations must run in timestamp order:
 5. `20260926120000_CreateKeycloakSsoProvisioning`
 6. `20260928120000_CreateKeycloakSsoGroupProvisioning`
 7. `20261006120000_AddKeycloakSsoAuthoritativeLifecycle`
+8. `20261011120000_AddKeycloakSsoManagedReactivation`
 
 After applying them, verify the five plugin table groups, unique indexes, and
 foreign keys described in the migration source. UUID columns use Passbolt's

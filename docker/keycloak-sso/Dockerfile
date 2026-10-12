@@ -73,6 +73,7 @@ RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);
     && php -r 'require "/usr/share/php/passbolt/vendor/autoload.php"; exit(is_a("Cake\\ORM\\Query\\SelectQuery", "Cake\\ORM\\Query", true) ? 0 : 1);' \
     && test -r /etc/passbolt/Migrations/20260928120000_CreateKeycloakSsoGroupProvisioning.php \
     && test -r /etc/passbolt/Migrations/20261006120000_AddKeycloakSsoAuthoritativeLifecycle.php \
+    && test -r /etc/passbolt/Migrations/20261011120000_AddKeycloakSsoManagedReactivation.php \
     && test "$(stat -c '%a:%U:%G' /etc/cron.d/passbolt-keycloak-sso)" = '644:root:root' \
     && grep -Fq 'keycloak_sso_provision_users && bin/cake keycloak_sso_reconcile_users && bin/cake keycloak_sso_sync_groups' /etc/cron.d/passbolt-keycloak-sso \
     && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \

@@ -7,7 +7,7 @@ use Cake\Log\Log;
 
 final class DeprovisioningAuditService
 {
-    private const EVENTS = ['checked', 'deprovisioned', 'reactivation_required', 'deleted', 'failed'];
+    private const EVENTS = ['checked', 'deprovisioned', 'reactivated', 'reactivation_required', 'deleted', 'failed'];
     private const CATEGORIES = ['none', 'disabled', 'deleted', 'access_cleanup', 'ownership', 'unexpected'];
 
     /** Record only fixed categories and an internal UUID. */

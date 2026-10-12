@@ -71,11 +71,14 @@ final class KeycloakSsoReconcileUsersCommand extends Command
         }
         $summary = sprintf(
             'Keycloak user lifecycle reconciliation complete: active=%d would_deprovision=%d ' .
-            'deprovisioned=%d in_progress=%d reactivation_required=%d failed=%d.',
+            'deprovisioned=%d in_progress=%d would_reactivate=%d reactivated=%d ' .
+            'reactivation_required=%d failed=%d.',
             $counts[ProvisionedUserLifecycleService::OUTCOME_ACTIVE],
             $counts[ProvisionedUserLifecycleService::OUTCOME_WOULD_DEPROVISION],
             $counts[ProvisionedUserLifecycleService::OUTCOME_DEPROVISIONED],
             $counts[ProvisionedUserLifecycleService::OUTCOME_IN_PROGRESS],
+            $counts[ProvisionedUserLifecycleService::OUTCOME_WOULD_REACTIVATE],
+            $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATED],
             $counts[ProvisionedUserLifecycleService::OUTCOME_REACTIVATION_REQUIRED],
             $counts[ProvisionedUserLifecycleService::OUTCOME_FAILED]
         );

@@ -55,6 +55,7 @@ final class KeycloakSsoProvisionedUsersTable extends Table
             ->allowEmptyDateTime('absent_since')
             ->allowEmptyDateTime('deprovisioned_at')
             ->allowEmptyDateTime('deletion_eligible_at')
+            ->allowEmptyDateTime('managed_disabled_at')
             ->scalar('deprovision_reason')->inList('deprovision_reason', [
                 KeycloakSsoProvisionedUser::REASON_DISABLED,
                 KeycloakSsoProvisionedUser::REASON_DELETED,

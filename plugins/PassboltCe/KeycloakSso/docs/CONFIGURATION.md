@@ -24,6 +24,7 @@ URI must use that same origin when Passbolt full-base-URL enforcement is active.
 | `KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED` | No | Independent explicit boolean gate for removing plugin-managed memberships absent from a complete Keycloak response. |
 | `KEYCLOAK_SSO_DEPROVISIONING_ENABLED` | No | Independent explicit boolean gate for authoritative disable/delete containment. Missing or ambiguous values fail closed. |
 | `KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS` | No | Quarantine before an absent user becomes deletion-eligible; defaults to 604800 and must be 3600–2592000 seconds. |
+| `KEYCLOAK_SSO_REACTIVATION_ENABLED` | No | Independent explicit boolean gate for re-enabling only unchanged, plugin-marked suspensions after the same Keycloak subject returns enabled. Missing defaults to false; ambiguous values fail closed. |
 
 Use placeholders such as `<OIDC_CLIENT_SECRET>`, `<BASE64_32_BYTE_KEY>`, and
 `{"kek-2026-01":"<BASE64_32_BYTE_KEY>"}` in templates. Generate real values

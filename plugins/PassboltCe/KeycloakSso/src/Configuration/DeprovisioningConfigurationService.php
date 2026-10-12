@@ -44,12 +44,22 @@ final class DeprovisioningConfigurationService
                 DeprovisioningConfigurationDto::MAX_GRACE_SECONDS
             ));
         }
+        $rawReactivation = $read(KeycloakSsoEnvironment::REACTIVATION_ENABLED);
+        $reactivationEnabled = $rawReactivation === false || $rawReactivation === ''
+            ? false
+            : filter_var($rawReactivation, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($reactivationEnabled === null) {
+            throw new OidcConfigurationException(
+                KeycloakSsoEnvironment::REACTIVATION_ENABLED . ' must be a boolean value.'
+            );
+        }
 
         return new DeprovisioningConfigurationDto(
             $provisioning->issuer,
             $provisioning->actorUserId,
             $provisioning->batchSize,
-            $grace
+            $grace,
+            $reactivationEnabled
         );
     }
 }

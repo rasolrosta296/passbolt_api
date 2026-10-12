@@ -44,4 +44,17 @@ final class DeprovisioningAuditServiceTest extends TestCase
         $this->assertStringContainsString('category=unexpected', $output);
         $this->assertStringContainsString('user=none', $output);
     }
+
+    public function testReactivationUsesOnlyAllowlistedAuditMetadata(): void
+    {
+        $userId = '8d020e76-4951-58d2-b68e-99e2fc1053f8';
+        (new DeprovisioningAuditService())->record('reactivated', 'disabled', $userId);
+
+        $engine = Log::engine(self::LOGGER);
+        $this->assertInstanceOf(ArrayLog::class, $engine);
+        $output = implode("\n", $engine->read());
+        $this->assertStringContainsString('event=reactivated', $output);
+        $this->assertStringContainsString('category=disabled', $output);
+        $this->assertStringContainsString('user=' . $userId, $output);
+    }
 }
