@@ -41,10 +41,13 @@ of the following at processing time:
 - email, firstName, and lastName are present and valid;
 - the issuer is the exact configured issuer.
 
-An existing Passbolt username, deleted-user username reuse, subject collision,
-or provisioning-record collision fails closed and requires administrator
-review. Email is discovery/provisioning metadata and is never the permanent SSO
-identity key.
+An existing nondeleted Passbolt username, subject collision, or
+provisioning-record collision fails closed and requires administrator review.
+A soft-deleted Passbolt username does not block a genuinely new Keycloak
+identity with a new immutable subject from receiving a new Passbolt invitation.
+The old account and its cryptographic ownership are not restored, merged, or
+transferred. Email is discovery/provisioning metadata and is never the
+permanent SSO identity key.
 
 ## Idempotency and reliability
 
@@ -248,8 +251,17 @@ schedule this command with an unreviewed list of user identifiers.
   plugin-marked Passbolt suspension when the independent reactivation flag is
   enabled. Recreated/previously absent subjects and Passbolt-admin suspensions
   are never automatically re-enabled.
-- A collision with any existing Passbolt username, including a soft-deleted
-  user, is terminal and requires administrator review.
+- A collision with any nondeleted Passbolt username is terminal and requires
+  administrator review. A soft-deleted username may be reused only by a new
+  Keycloak subject. The old `(issuer, subject)` remains reserved and can never
+  silently provision or link a replacement account.
+- A forgotten Passbolt passphrase is not recoverable from Keycloak identity
+  proof alone. Use an enrolled browser profile or normal usable recovery
+  material. If neither remains, replacing the account is destructive: delete
+  it only after normal ownership/access review, recreate the Keycloak user so
+  it receives a new subject, and let the fresh `CREATE` event issue a new
+  Passbolt invitation. The replacement has a new Passbolt UUID and OpenPGP key;
+  old encrypted access is not inherited.
 - Provisioning does not link the Keycloak identity. The user must finish the
   normal Passbolt invitation and then use the existing explicit linking flow.
 - Fully automatic server-side membership is intentionally impossible once a

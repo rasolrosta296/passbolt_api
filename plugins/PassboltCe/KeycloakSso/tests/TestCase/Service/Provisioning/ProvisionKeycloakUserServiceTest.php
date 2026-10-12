@@ -12,6 +12,7 @@ use App\Test\Factory\AuthenticationTokenFactory;
 use App\Test\Factory\RoleFactory;
 use App\Test\Factory\UserFactory;
 use App\Test\Lib\Model\EmailQueueTrait;
+use App\Utility\UuidFactory;
 use Cake\Event\EventManager;
 use Cake\ORM\TableRegistry;
 use Passbolt\EmailDigest\Test\Factory\EmailQueueFactory;
@@ -19,6 +20,7 @@ use Passbolt\KeycloakSso\Error\Exception\OidcHttpStatusException;
 use Passbolt\KeycloakSso\Model\Dto\KeycloakAdminEventDto;
 use Passbolt\KeycloakSso\Model\Dto\OidcDiscoveryDocument;
 use Passbolt\KeycloakSso\Model\Dto\ProvisioningConfigurationDto;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisionedUser;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoProvisioningEvent;
 use Passbolt\KeycloakSso\Service\Audit\ProvisioningAuditService;
 use Passbolt\KeycloakSso\Service\Provisioning\KeycloakProvisioningApiService;
@@ -144,17 +146,99 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
         $this->assertSame('keycloak_unavailable', $this->savedEventFailureCode());
     }
 
-    public function testDeletedPassboltUsernameStillFailsClosedAsCollision(): void
+    public function testNewSubjectCanProvisionReplacementAfterOldPassboltUserWasSoftDeleted(): void
     {
+        EventManager::instance()
+            ->on(new CoreEmailRedactorPool())
+            ->on(new CoreNotificationSettingsDefinition());
+        $this->initEmailForServiceTest();
         RoleFactory::make()->user()->persist();
         $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
         $this->assertInstanceOf(User::class, $actor);
-        UserFactory::make(['username' => 'new.user@example.test'])->user()->deleted()->persist();
+        $deleted = UserFactory::make(['username' => 'new.user@example.test'])->user()->deleted()->persist();
+        $this->assertInstanceOf(User::class, $deleted);
+        $provisioned = TableRegistry::getTableLocator()->get(
+            'Passbolt/KeycloakSso.KeycloakSsoProvisionedUsers'
+        );
+        $oldProvenance = $provisioned->newEntity([
+            'id' => UuidFactory::uuid(),
+            'user_id' => $deleted->id,
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'subject' => 'old-keycloak-subject',
+            'email_at_provisioning' => 'new.user@example.test',
+            'source_event_id' => '53a9a0c1-8ce8-4cbc-9b38-04938fea2311',
+            'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_DELETED,
+        ], ['accessibleFields' => ['*' => true]]);
+        $provisioned->saveOrFail($oldProvenance);
 
         $outcome = $this->service($actor->id, $this->eligibleUserResponses())->process($this->event());
 
-        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_COLLISION, $outcome);
-        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_COLLISION, $this->savedEventStatus());
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_PROVISIONED, $outcome);
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_PROVISIONED, $this->savedEventStatus());
+        $users = TableRegistry::getTableLocator()->get('Users');
+        $this->assertSame(2, $users->find()->where([
+            'LOWER(Users.username)' => 'new.user@example.test',
+        ])->count());
+        $replacement = $users->find()->where([
+            'LOWER(Users.username)' => 'new.user@example.test',
+            'Users.deleted' => false,
+        ])->firstOrFail();
+        $this->assertInstanceOf(User::class, $replacement);
+        $this->assertFalse($replacement->active);
+        $this->assertNotSame($deleted->id, $replacement->id);
+        $this->assertSame(1, $users->find()->where([
+            'Users.id' => $deleted->id,
+            'Users.deleted' => true,
+        ])->count());
+        $this->assertSame(1, AuthenticationTokenFactory::find()->where([
+            'user_id' => $replacement->id,
+            'type' => AuthenticationToken::TYPE_REGISTER,
+        ])->count());
+        $this->assertSame(0, TableRegistry::getTableLocator()
+            ->get('Passbolt/KeycloakSso.KeycloakSsoIdentities')->find()->count());
+        $this->assertSame(0, TableRegistry::getTableLocator()->get('Gpgkeys')->find()->where([
+            'user_id' => $replacement->id,
+        ])->count());
+        $this->assertSame(2, $provisioned->find()->where([
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+        ])->count());
+        $this->assertSame(1, $provisioned->find()->where([
+            'subject' => 'old-keycloak-subject',
+            'user_id' => $deleted->id,
+        ])->count());
+        $this->assertSame(1, $provisioned->find()->where([
+            'subject' => $this->event()->subject,
+            'user_id' => $replacement->id,
+        ])->count());
+        $this->assertSame(1, EmailQueueFactory::count());
+    }
+
+    public function testSameProvisionedSubjectRemainsCollisionAfterOldPassboltUserWasSoftDeleted(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $deleted = UserFactory::make(['username' => 'new.user@example.test'])->user()->deleted()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+        $this->assertInstanceOf(User::class, $deleted);
+        $table = TableRegistry::getTableLocator()->get(
+            'Passbolt/KeycloakSso.KeycloakSsoProvisionedUsers'
+        );
+        $provenance = $table->newEntity([
+            'id' => UuidFactory::uuid(),
+            'user_id' => $deleted->id,
+            'issuer' => 'https://keyclock.gobaz.ir/realms/passbolt',
+            'subject' => $this->event()->subject,
+            'email_at_provisioning' => 'new.user@example.test',
+            'source_event_id' => '53a9a0c1-8ce8-4cbc-9b38-04938fea2311',
+            'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_DELETED,
+        ], ['accessibleFields' => ['*' => true]]);
+        $table->saveOrFail($provenance);
+
+        $outcome = $this->service($actor->id, $this->eligibleUserResponses())->process($this->event());
+
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_DUPLICATE, $outcome);
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_SKIPPED, $this->savedEventStatus());
+        $this->assertSame('subject_already_provisioned', $this->savedEventFailureCode());
         $this->assertSame(1, TableRegistry::getTableLocator()->get('Users')->find()->where([
             'LOWER(Users.username)' => 'new.user@example.test',
         ])->count());
@@ -204,6 +288,24 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
         $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_COLLISION, $this->savedEventStatus());
     }
 
+    public function testDisabledNondeletedUsernameStillFailsClosedAsCollision(): void
+    {
+        RoleFactory::make()->user()->persist();
+        $actor = UserFactory::make()->admin()->active()->notDisabled()->persist();
+        $this->assertInstanceOf(User::class, $actor);
+        UserFactory::make(['username' => 'new.user@example.test'])
+            ->user()
+            ->active()
+            ->disabled()
+            ->persist();
+
+        $outcome = $this->service($actor->id, $this->eligibleUserResponses())->process($this->event());
+
+        $this->assertSame(ProvisionKeycloakUserService::OUTCOME_COLLISION, $outcome);
+        $this->assertSame(KeycloakSsoProvisioningEvent::STATUS_COLLISION, $this->savedEventStatus());
+        $this->assertSame('email_collision', $this->savedEventFailureCode());
+    }
+
     public function testLaterVerifiedUpdateCanProvisionAfterUnverifiedCreateWasSkipped(): void
     {
         RoleFactory::make()->user()->persist();
@@ -247,7 +349,7 @@ final class ProvisionKeycloakUserServiceTest extends KeycloakSsoIntegrationTestC
         ])->count());
     }
 
-    /** @param list<array<mixed>> $responses */
+    /** @param list<array<mixed>|\Throwable> $responses */
     private function service(string $actorId, array $responses): ProvisionKeycloakUserService
     {
         return $this->serviceWithHttp($actorId, new QueuedOidcHttpClient($responses));

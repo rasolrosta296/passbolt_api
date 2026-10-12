@@ -23,12 +23,16 @@ feature.
 - One Keycloak identity per issuer and Passbolt user.
 
 Firefox, Safari, WebAuthn/platform binding, device-to-device enrollment, and
-automatic account creation or recovery are not supported.
+Keycloak-only cryptographic account recovery are not supported. Optional
+administrator-event provisioning can create an ordinary inactive Passbolt user
+and setup invitation; it never creates keys, links an identity, or authenticates
+the user.
 
 ## Installation order
 
-1. Back up the Passbolt database and secret configuration. Confirm that the
-   normal recovery kit and normal GPGAuth login work before changing anything.
+1. Back up the Passbolt database and secret configuration. Confirm that usable
+   normal recovery material and normal GPGAuth login work before changing
+   anything.
 2. Install the API release candidate with PHP 8.2+, `ext-gmp`, `ext-sodium`,
    the locked Composer dependencies, and the plugin migrations.
 3. Apply the migrations in timestamp order. Do not enable the feature until

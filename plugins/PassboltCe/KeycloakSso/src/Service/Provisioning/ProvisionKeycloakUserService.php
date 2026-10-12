@@ -268,7 +268,12 @@ final class ProvisionKeycloakUserService
         }
         /** @var \App\Model\Table\UsersTable $users */
         $users = $this->fetchTable('Users');
-        if ($users->find()->where(['LOWER(Users.username)' => $normalizedEmail])->count() > 0) {
+        if (
+            $users->find()->where([
+                'LOWER(Users.username)' => $normalizedEmail,
+                'Users.deleted' => false,
+            ])->count() > 0
+        ) {
             return 'email_collision';
         }
 

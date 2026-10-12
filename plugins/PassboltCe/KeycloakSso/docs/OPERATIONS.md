@@ -120,6 +120,14 @@ remove an old key to force success.
   must log in normally and freshly enroll.
 - Lost browser profile, inaccessible Keycloak, or corrupt local enrollment uses
   the same normal-login/recovery fallback. Keycloak-only recovery is prohibited.
+- If both the enrolled browser profile and usable normal recovery material are
+  unavailable, the existing OpenPGP private key cannot be recovered by this
+  integration. Account replacement is an explicit destructive operation, not
+  a passphrase reset. After normal Passbolt ownership/access review, delete the
+  old Passbolt account and recreate the Keycloak user to obtain a new immutable
+  subject. Provisioning may reuse the soft-deleted email for a new inactive
+  Passbolt user, but never reuses the old subject, UUID, key, identity link,
+  enrollment, group access, or encrypted-secret ownership.
 
 ## Passphrase and OpenPGP-key rotation
 
