@@ -86,6 +86,7 @@ KEYCLOAK_SSO_GROUP_PROVISIONING_ENABLED=false
 KEYCLOAK_SSO_GROUP_RECONCILIATION_ENABLED=false
 KEYCLOAK_SSO_DEPROVISIONING_ENABLED=false
 KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS=604800
+KEYCLOAK_SSO_AUTOMATIC_DELETION_ENABLED=false
 KEYCLOAK_SSO_REACTIVATION_ENABLED=false
 ```
 
@@ -139,10 +140,12 @@ order and alert on every nonzero exit:
 1. `keycloak_sso_provision_users`
 2. `keycloak_sso_reconcile_users`
 3. `keycloak_sso_sync_groups`
+4. `keycloak_sso_delete_eligible_users`
 
 The reconciliation interval is the maximum expected propagation delay for a
-Keycloak disable, delete, or group-membership removal. Do not run permanent
-deletion from an unattended wildcard or bulk loop.
+Keycloak disable, delete, or group-membership removal. Never invoke the manual
+single-user deletion command from an unreviewed wildcard or bulk loop; use only
+the separately gated bounded automatic-deletion worker described below.
 
 ## Group synchronization and end-to-end encryption
 
@@ -232,17 +235,36 @@ the Keycloak identity again, and create a fresh browser-profile enrollment.
 Subsequent group synchronization may restore only memberships that still meet
 the normal Passbolt cryptographic sharing requirements.
 
-After the grace period, permanent Passbolt soft deletion requires a fresh
-Keycloak 404 and explicit one-user approval:
+After the grace period, permanent Passbolt soft deletion always requires a
+fresh successful directory preflight and an exact Keycloak 404. Manual
+one-user approval remains available:
 
 ```text
 bin/cake keycloak_sso_delete_user --user-id <PASSBOLT_USER_UUID> --confirm DELETE
 ```
 
+Automatic deletion is a separate opt-in policy. When
+`KEYCLOAK_SSO_AUTOMATIC_DELETION_ENABLED=true`, preview or process one bounded
+page with:
+
+```text
+bin/cake keycloak_sso_delete_eligible_users --dry-run
+bin/cake keycloak_sso_delete_eligible_users
+```
+
+The production image invokes the bounded command after provisioning,
+reconciliation, and group synchronization. Missing/false configuration is a
+successful no-op. Every candidate receives a fresh Keycloak directory
+preflight and exact subject lookup immediately before mutation. A present
+Keycloak record, including `enabled=false`, is never deleted. Provider errors
+fail closed and produce a nonzero command result.
+
 Native Passbolt delete rules remain authoritative. If the user is an owner or
 sole group manager requiring transfer, deletion fails closed. Perform the
-normal Passbolt administrative ownership/manager transfer and retry. Never
-schedule this command with an unreviewed list of user identifiers.
+normal Passbolt administrative ownership/manager transfer and retry. The
+configured provisioning actor is excluded, processing is limited by the
+provisioning batch size, and concurrent attempts serialize on the existing
+database row lock.
 
 ## Operational limitations
 

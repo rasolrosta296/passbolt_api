@@ -19,6 +19,7 @@ final class DeprovisioningConfigurationServiceTest extends TestCase
         $this->assertSame(DeprovisioningConfigurationDto::DEFAULT_GRACE_SECONDS, $configuration->graceSeconds);
         $this->assertSame('8d020e76-4951-58d2-b68e-99e2fc1053f8', $configuration->actorUserId);
         $this->assertFalse($configuration->reactivationEnabled);
+        $this->assertFalse($configuration->automaticDeletionEnabled);
     }
 
     public function testLoadsExplicitAutomaticReactivationPolicy(): void
@@ -29,6 +30,16 @@ final class DeprovisioningConfigurationServiceTest extends TestCase
         $configuration = (new DeprovisioningConfigurationService())->load($environment);
 
         $this->assertTrue($configuration->reactivationEnabled);
+    }
+
+    public function testLoadsExplicitAutomaticDeletionPolicy(): void
+    {
+        $environment = $this->environment();
+        $environment[KeycloakSsoEnvironment::AUTOMATIC_DELETION_ENABLED] = 'true';
+
+        $configuration = (new DeprovisioningConfigurationService())->load($environment);
+
+        $this->assertTrue($configuration->automaticDeletionEnabled);
     }
 
     #[DataProvider('invalidProvider')]
@@ -47,6 +58,9 @@ final class DeprovisioningConfigurationServiceTest extends TestCase
             'too long' => [[KeycloakSsoEnvironment::DEPROVISIONING_GRACE_SECONDS => '2592001']],
             'not integer' => [[KeycloakSsoEnvironment::DEPROVISIONING_GRACE_SECONDS => 'one-week']],
             'ambiguous reactivation' => [[KeycloakSsoEnvironment::REACTIVATION_ENABLED => 'automatic']],
+            'ambiguous automatic deletion' => [[
+                KeycloakSsoEnvironment::AUTOMATIC_DELETION_ENABLED => 'automatic',
+            ]],
         ];
     }
 

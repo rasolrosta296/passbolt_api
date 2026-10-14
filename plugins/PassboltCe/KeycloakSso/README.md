@@ -95,6 +95,10 @@ no identity link -> identity linked -> browser-profile enrolled -> SSO usable
 - Feature disablement makes all plugin routes unavailable. Existing database
   rows and local encrypted enrollment artifacts are retained but no server share
   can be released.
+- Keycloak disablement can suspend only plugin-provisioned users. Optional
+  automatic soft deletion applies only after an exact Keycloak absence, the
+  configured grace period, fresh absence confirmation, and native Passbolt
+  ownership checks; it is disabled by default.
 - Loss of a profile or Keycloak access falls back to normal Passbolt login and
   recovery. Keycloak alone never provisions a new browser profile.
 

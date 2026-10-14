@@ -53,13 +53,23 @@ final class DeprovisioningConfigurationService
                 KeycloakSsoEnvironment::REACTIVATION_ENABLED . ' must be a boolean value.'
             );
         }
+        $rawAutomaticDeletion = $read(KeycloakSsoEnvironment::AUTOMATIC_DELETION_ENABLED);
+        $automaticDeletionEnabled = $rawAutomaticDeletion === false || $rawAutomaticDeletion === ''
+            ? false
+            : filter_var($rawAutomaticDeletion, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($automaticDeletionEnabled === null) {
+            throw new OidcConfigurationException(
+                KeycloakSsoEnvironment::AUTOMATIC_DELETION_ENABLED . ' must be a boolean value.'
+            );
+        }
 
         return new DeprovisioningConfigurationDto(
             $provisioning->issuer,
             $provisioning->actorUserId,
             $provisioning->batchSize,
             $grace,
-            $reactivationEnabled
+            $reactivationEnabled,
+            $automaticDeletionEnabled
         );
     }
 }

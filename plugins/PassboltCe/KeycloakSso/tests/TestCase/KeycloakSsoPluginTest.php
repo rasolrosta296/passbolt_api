@@ -8,6 +8,7 @@ use App\Service\Resources\ResourcesExpireResourcesServiceInterface;
 use Cake\Console\CommandCollection;
 use Cake\Core\Container;
 use Cake\TestSuite\TestCase;
+use Passbolt\KeycloakSso\Command\KeycloakSsoDeleteEligibleUsersCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoDeleteUserCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoProvisionUsersCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoReconcileUsersCommand;
@@ -33,6 +34,10 @@ final class KeycloakSsoPluginTest extends TestCase
         $this->assertSame(
             KeycloakSsoDeleteUserCommand::class,
             $commands->get('keycloak_sso_delete_user')
+        );
+        $this->assertSame(
+            KeycloakSsoDeleteEligibleUsersCommand::class,
+            $commands->get('keycloak_sso_delete_eligible_users')
         );
         $this->assertSame(
             KeycloakSsoServerSharesRewrapCommand::class,
@@ -64,6 +69,10 @@ final class KeycloakSsoPluginTest extends TestCase
         $this->assertInstanceOf(
             KeycloakSsoDeleteUserCommand::class,
             $container->get(KeycloakSsoDeleteUserCommand::class)
+        );
+        $this->assertInstanceOf(
+            KeycloakSsoDeleteEligibleUsersCommand::class,
+            $container->get(KeycloakSsoDeleteEligibleUsersCommand::class)
         );
         $this->assertInstanceOf(
             KeycloakSsoSyncGroupsCommand::class,

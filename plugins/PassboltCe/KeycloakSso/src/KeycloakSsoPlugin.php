@@ -8,6 +8,7 @@ use Cake\Console\CommandCollection;
 use Cake\Core\BasePlugin;
 use Cake\Core\ContainerInterface;
 use Cake\Core\PluginApplicationInterface;
+use Passbolt\KeycloakSso\Command\KeycloakSsoDeleteEligibleUsersCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoDeleteUserCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoProvisionUsersCommand;
 use Passbolt\KeycloakSso\Command\KeycloakSsoReconcileUsersCommand;
@@ -30,6 +31,7 @@ final class KeycloakSsoPlugin extends BasePlugin
         $commands->add('keycloak_sso_provision_users', KeycloakSsoProvisionUsersCommand::class);
         $commands->add('keycloak_sso_reconcile_users', KeycloakSsoReconcileUsersCommand::class);
         $commands->add('keycloak_sso_delete_user', KeycloakSsoDeleteUserCommand::class);
+        $commands->add('keycloak_sso_delete_eligible_users', KeycloakSsoDeleteEligibleUsersCommand::class);
         $commands->add('keycloak_sso_server_shares_rewrap', KeycloakSsoServerSharesRewrapCommand::class);
         $commands->add('keycloak_sso_sync_groups', KeycloakSsoSyncGroupsCommand::class);
         $commands->add('keycloak_sso_transactions_cleanup', KeycloakSsoTransactionsCleanupCommand::class);
@@ -55,6 +57,8 @@ final class KeycloakSsoPlugin extends BasePlugin
         $container->add(KeycloakSsoReconcileUsersCommand::class)
             ->addArgument(ResourcesExpireResourcesServiceInterface::class);
         $container->add(KeycloakSsoDeleteUserCommand::class)
+            ->addArgument(ResourcesExpireResourcesServiceInterface::class);
+        $container->add(KeycloakSsoDeleteEligibleUsersCommand::class)
             ->addArgument(ResourcesExpireResourcesServiceInterface::class);
         $container->add(KeycloakSsoSyncGroupsCommand::class)
             ->addArgument(ResourcesExpireResourcesServiceInterface::class);

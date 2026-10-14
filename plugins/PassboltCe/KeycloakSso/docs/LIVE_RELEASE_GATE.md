@@ -150,6 +150,28 @@ must pass against the exact API, extension, and styleguide release revisions.
 - Rotate the Keycloak client secret and transaction key in a controlled test;
   in-flight OIDC work must fail while new transactions work afterward.
 
+## Authoritative user deletion
+
+- Use only a disposable plugin-provisioned user with no unresolved ownership
+  or sole-manager duties. Confirm `enabled=false` suspends the Passbolt user but
+  never makes it deletion-eligible or soft-deleted.
+- Delete the Keycloak user and confirm an exact authenticated Admin API 404
+  suspends and quarantines the Passbolt user with a future
+  `deletion_eligible_at`. Before grace expiry, both dry-run and mutation delete
+  zero users.
+- After grace expiry, run `keycloak_sso_delete_eligible_users --dry-run` and
+  confirm it reports one candidate without changing Passbolt state. Run the
+  mutation and confirm normal Passbolt soft deletion and sanitized audit output.
+- Repeat with DNS/TLS/timeout/401/403/429/5xx/malformed responses, a present
+  disabled Keycloak user, a foreign issuer, and failed ownership/sole-manager
+  validation. Every case must leave the Passbolt account suspended but not
+  deleted and return a nonzero failure where a candidate was attempted.
+- Recreate the Keycloak user before deletion and prove fresh presence blocks
+  deletion. After successful soft deletion, recreate the Keycloak user with a
+  new immutable subject and verify provisioning creates only a new inactive
+  Passbolt invitation with no inherited identity, enrollment, keys, groups, or
+  resource access.
+
 ## Browser-profile and incident assumptions
 
 - Copy an enrolled browser profile under the supported environment. Confirm

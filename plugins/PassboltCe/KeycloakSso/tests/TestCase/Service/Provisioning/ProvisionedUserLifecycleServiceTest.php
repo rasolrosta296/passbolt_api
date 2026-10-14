@@ -440,6 +440,179 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
         );
     }
 
+    public function testAutomaticDeletionDoesNothingUntilExplicitlyEnabled(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor),
+            $this->api($actor, []),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_WOULD_DELETE]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+    }
+
+    public function testAutomaticDeletionDryRunRequiresFreshAbsenceWithoutMutation(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, [new OidcHttpStatusException(404)]),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible(true);
+
+        $this->assertSame(1, $counts[ProvisionedUserDeletionService::OUTCOME_WOULD_DELETE]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_QUARANTINED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testAutomaticDeletionSoftDeletesEligibleAbsentUser(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, [new OidcHttpStatusException(404)]),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_WOULD_DELETE]);
+        $this->assertSame(1, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertTrue($this->userById($user->id)->isDeleted());
+        $this->assertSame(
+            KeycloakSsoProvisionedUser::STATUS_DELETED,
+            $this->provisionedUsers()->find()->firstOrFail()->get('lifecycle_status')
+        );
+    }
+
+    public function testAutomaticDeletionNeverDeletesDisabledButPresentKeycloakUser(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, [$this->remoteUser(false)]),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(1, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+    }
+
+    public function testAutomaticDeletionFailsClosedWhenKeycloakLookupFails(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, [new OidcHttpStatusException(503)]),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(1, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+    }
+
+    public function testAutomaticDeletionNeverTouchesAnotherIssuer(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($user);
+        $this->provisionedUsers()->updateAll([
+            'issuer' => 'https://keyclock.gobaz.ir/realms/foreign',
+        ], ['user_id' => $user->id]);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, []),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+    }
+
+    public function testAutomaticDeletionIgnoresAbsentUserUntilGraceExpires(): void
+    {
+        [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $now = new DateTime('2026-10-07 12:00:00');
+        $this->provisionedUsers()->updateAll([
+            'deprovision_reason' => KeycloakSsoProvisionedUser::REASON_DELETED,
+            'deprovisioned_at' => $now,
+            'absent_since' => $now,
+            'deletion_eligible_at' => $now->addSeconds(3_600),
+        ], ['user_id' => $user->id]);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true),
+            $this->api($actor, []),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible(false, $now);
+
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $this->assertSame(0, $counts[ProvisionedUserDeletionService::OUTCOME_FAILED]);
+        $this->assertFalse($this->userById($user->id)->isDeleted());
+    }
+
+    public function testAutomaticDeletionIsBoundedByConfiguredBatchSize(): void
+    {
+        [$actor, $first] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
+        $this->makeDeletionEligible($first);
+        $second = UserFactory::make(['username' => 'second.managed@example.test'])
+            ->user()->active()->disabled()->persist();
+        self::assertInstanceOf(User::class, $second);
+        $secondProvisioned = $this->provisionedUsers()->newEntity([
+            'id' => UuidFactory::uuid(),
+            'user_id' => $second->id,
+            'issuer' => self::ISSUER,
+            'subject' => 'second-managed-subject',
+            'email_at_provisioning' => $second->username,
+            'source_event_id' => UuidFactory::uuid(),
+            'lifecycle_status' => KeycloakSsoProvisionedUser::STATUS_QUARANTINED,
+        ], ['accessibleFields' => ['*' => true]]);
+        $this->provisionedUsers()->saveOrFail($secondProvisioned);
+        $this->makeDeletionEligible($second);
+        $service = new ProvisionedUserDeletionService(
+            $this->lifecycleConfiguration($actor, false, true, 1),
+            $this->api($actor, [new OidcHttpStatusException(404)]),
+            new ResourcesExpireResourcesFallbackServiceService()
+        );
+
+        $counts = $service->deleteEligible();
+
+        $this->assertSame(1, $counts[ProvisionedUserDeletionService::OUTCOME_DELETED]);
+        $deleted = array_filter([
+            $this->userById($first->id)->isDeleted(),
+            $this->userById($second->id)->isDeleted(),
+        ]);
+        $this->assertCount(1, $deleted);
+    }
+
     public function testDeletionRequiresFreshAbsenceGraceAndExplicitConfirmation(): void
     {
         [$actor, $user] = $this->users(true, KeycloakSsoProvisionedUser::STATUS_QUARANTINED);
@@ -602,14 +775,17 @@ final class ProvisionedUserLifecycleServiceTest extends KeycloakSsoIntegrationTe
 
     private function lifecycleConfiguration(
         User $actor,
-        bool $reactivationEnabled = false
+        bool $reactivationEnabled = false,
+        bool $automaticDeletionEnabled = false,
+        int $batchSize = 100,
     ): DeprovisioningConfigurationDto {
         return new DeprovisioningConfigurationDto(
             self::ISSUER,
             $actor->id,
-            100,
+            $batchSize,
             3_600,
-            $reactivationEnabled
+            $reactivationEnabled,
+            $automaticDeletionEnabled
         );
     }
 

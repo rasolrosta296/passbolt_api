@@ -75,6 +75,6 @@ RUN php -r 'exit(extension_loaded("gmp") && extension_loaded("sodium") ? 0 : 1);
     && test -r /etc/passbolt/Migrations/20261006120000_AddKeycloakSsoAuthoritativeLifecycle.php \
     && test -r /etc/passbolt/Migrations/20261011120000_AddKeycloakSsoManagedReactivation.php \
     && test "$(stat -c '%a:%U:%G' /etc/cron.d/passbolt-keycloak-sso)" = '644:root:root' \
-    && grep -Fq 'keycloak_sso_provision_users && bin/cake keycloak_sso_reconcile_users && bin/cake keycloak_sso_sync_groups' /etc/cron.d/passbolt-keycloak-sso \
+    && grep -Fq 'keycloak_sso_provision_users && bin/cake keycloak_sso_reconcile_users && bin/cake keycloak_sso_sync_groups && bin/cake keycloak_sso_delete_eligible_users' /etc/cron.d/passbolt-keycloak-sso \
     && /usr/bin/bash -c 'set -euo pipefail; test -n "$BASH_VERSION"' \
     && test ! -e /usr/share/php/passbolt/vendor/phpunit
