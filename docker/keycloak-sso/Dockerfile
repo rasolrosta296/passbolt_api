@@ -1,16 +1,25 @@
 ARG PASSBOLT_BASE_IMAGE="passbolt/passbolt:5.15.0-1-ce@sha256:4006aec1bb8756ef921491b2a703dab6fbe10e0df38cb0ffd3e13b138bd7d63f"
 ARG COMPOSER_IMAGE="composer:2.8.12@sha256:5248900ab8b5f7f880c2d62180e40960cd87f60149ec9a1abfd62ac72a02577c"
+ARG PHP_SECURITY_PACKAGE_VERSION="8.4.27-1~deb13u1"
 
 FROM ${COMPOSER_IMAGE} AS composer-bin
 
 FROM ${PASSBOLT_BASE_IMAGE} AS vendor-builder
 
+ARG PHP_SECURITY_PACKAGE_VERSION
+
 USER 0
 
 RUN apt-get update \
+    && php_packages="$(dpkg-query -W -f='${binary:Package} ${db:Status-Abbrev}\n' 'php8.4*' \
+        | awk '$2 == "ii" {print $1}')" \
+    && test -n "${php_packages}" \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --only-upgrade \
+        ${php_packages} \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        php8.4-gmp=8.4.24-1~deb13u1 \
+        php8.4-gmp="${PHP_SECURITY_PACKAGE_VERSION}" \
         unzip=6.0-29+deb13u1 \
+    && php -r 'exit(version_compare(PHP_VERSION, "8.4.27", ">=") && version_compare(PHP_VERSION, "8.5.0", "<") ? 0 : 1);' \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer-bin /usr/bin/composer /usr/local/bin/composer
@@ -37,6 +46,7 @@ FROM ${PASSBOLT_BASE_IMAGE}
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 ARG VERSION=""
+ARG PHP_SECURITY_PACKAGE_VERSION
 
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
@@ -47,9 +57,15 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 USER 0
 
 RUN apt-get update \
+    && php_packages="$(dpkg-query -W -f='${binary:Package} ${db:Status-Abbrev}\n' 'php8.4*' \
+        | awk '$2 == "ii" {print $1}')" \
+    && test -n "${php_packages}" \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --only-upgrade \
+        ${php_packages} \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash=5.2.37-2+b9 \
-        php8.4-gmp=8.4.24-1~deb13u1 \
+        php8.4-gmp="${PHP_SECURITY_PACKAGE_VERSION}" \
+    && php -r 'exit(version_compare(PHP_VERSION, "8.4.27", ">=") && version_compare(PHP_VERSION, "8.5.0", "<") ? 0 : 1);' \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=vendor-builder /build/vendor /usr/share/php/passbolt/vendor

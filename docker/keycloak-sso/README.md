@@ -3,16 +3,22 @@
 This image is a narrow overlay on the official standard Passbolt CE 5.15.0
 image. It keeps the official rootful image's entrypoint, services, runtime
 user, ports, and package layout while adding only the reviewed Keycloak SSO
-plugin, its two generic core extension points, its five migrations, locked
+plugin, its two generic core extension points, its migrations, locked
 production Composer dependencies, and the GMP runtime extension required by
-the HPKE implementation. GNU Bash is an explicit pinned runtime dependency for
+the HPKE implementation. GNU Bash is an explicit runtime dependency for
 approved operational and init scripts.
 
 The base image and Composer build image are pinned by digest. Updating either
 digest is a security-sensitive maintenance task and must be reviewed together
-with the matching upstream Passbolt release. The added GMP Debian package is
-also pinned to the version shipped for that base; it must be reviewed and
-updated with the base image rather than silently drifting between rebuilds.
+with the matching upstream Passbolt release. Both build stages update only the
+installed PHP 8.4 package set and pin the added GMP package to the reviewed PHP
+security release; they deliberately do not perform a general package upgrade
+that could silently replace the pinned Passbolt application. The build fails
+unless the resulting runtime remains on PHP 8.4 and is at least PHP 8.4.27,
+which contains the fixes for CVE-2026-109618 and CVE-2026-109619. Updating this
+minimum or the package pin requires a new security review. Release CI also
+executes PHP from the published immutable image and enforces the same version
+range before creating its provenance attestation.
 
 Composer's optimized PSR-4 fallback must remain enabled. Do not generate an
 authoritative classmap: CakePHP's backwards-compatible `Cake\ORM\Query`

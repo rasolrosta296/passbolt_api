@@ -94,6 +94,17 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Verify published PHP security patch level
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${IMAGE_DIGEST}"
+          docker run --rm --platform linux/amd64 --entrypoint php \
+            "ghcr.io/rasolrosta296/passbolt-api-keycloak-sso@${IMAGE_DIGEST}" \
+            -r 'fwrite(STDOUT, PHP_VERSION . PHP_EOL); exit(version_compare(PHP_VERSION, "8.4.27", ">=") && version_compare(PHP_VERSION, "8.5.0", "<") ? 0 : 1);'
+
       - name: Attest published image
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
