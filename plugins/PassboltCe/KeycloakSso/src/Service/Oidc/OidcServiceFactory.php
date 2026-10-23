@@ -11,6 +11,8 @@ use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkProofProtector;
 use Passbolt\KeycloakSso\Service\Identity\PrepareIdentityLinkService;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryIdentityProofProtector;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryOidcProofService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\TransactionSecretProtector;
@@ -73,7 +75,8 @@ final class OidcServiceFactory implements OidcServiceFactoryInterface
                 new IdentityLinkProofProtector($protector),
                 new IdentityLinkAuditService()
             ),
-            new CryptoOidcProofService()
+            new CryptoOidcProofService(),
+            new AccountRecoveryOidcProofService(new AccountRecoveryIdentityProofProtector($protector))
         );
     }
 

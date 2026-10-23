@@ -26,6 +26,9 @@ final class KeycloakSsoEnvironment
     public const DEPROVISIONING_GRACE_SECONDS = 'KEYCLOAK_SSO_DEPROVISIONING_GRACE_SECONDS';
     public const AUTOMATIC_DELETION_ENABLED = 'KEYCLOAK_SSO_AUTOMATIC_DELETION_ENABLED';
     public const REACTIVATION_ENABLED = 'KEYCLOAK_SSO_REACTIVATION_ENABLED';
+    public const ACCOUNT_RECOVERY_ENABLED = 'KEYCLOAK_SSO_ACCOUNT_RECOVERY_ENABLED';
+    public const ACCOUNT_RECOVERY_ACR = 'KEYCLOAK_SSO_ACCOUNT_RECOVERY_ACR';
+    public const ACCOUNT_RECOVERY_AMR = 'KEYCLOAK_SSO_ACCOUNT_RECOVERY_AMR';
 
     /**
      * Return whether the plugin is enabled, rejecting ambiguous boolean values.
@@ -36,6 +39,20 @@ final class KeycloakSsoEnvironment
         $enabled = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($enabled === null) {
             throw new RuntimeException(self::ENABLED . ' must be a boolean value.');
+        }
+
+        return $enabled;
+    }
+
+    /**
+     * Return whether Keycloak-assisted account recovery is explicitly enabled.
+     */
+    public static function isAccountRecoveryEnabled(): bool
+    {
+        $value = env(self::ACCOUNT_RECOVERY_ENABLED, false);
+        $enabled = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($enabled === null) {
+            throw new RuntimeException(self::ACCOUNT_RECOVERY_ENABLED . ' must be a boolean value.');
         }
 
         return $enabled;

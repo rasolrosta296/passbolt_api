@@ -50,6 +50,7 @@ final class CreateOidcTransactionService
             !in_array($purpose, [
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF,
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK,
+                KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY,
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE,
             ], true) ||

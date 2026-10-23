@@ -9,8 +9,9 @@ return [
             'keycloakSso' => [
                 'version' => '1.0.0',
                 'enabled' => KeycloakSsoEnvironment::isEnabled(),
+                'accountRecoveryEnabled' => KeycloakSsoEnvironment::isAccountRecoveryEnabled(),
                 'settingsVisibility' => [
-                    'whiteListPublic' => ['enabled'],
+                    'whiteListPublic' => ['enabled', 'accountRecoveryEnabled'],
                 ],
             ],
         ],

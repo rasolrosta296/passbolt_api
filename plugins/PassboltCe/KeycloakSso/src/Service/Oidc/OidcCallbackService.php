@@ -10,12 +10,15 @@ use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Crypto\CryptoOidcProofService;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
 use Passbolt\KeycloakSso\Service\Identity\PrepareIdentityLinkService;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryOidcProofService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use SensitiveParameter;
 use Throwable;
 
 final class OidcCallbackService implements OidcCallbackProcessorInterface
 {
+    private ?string $claimedPurpose = null;
+
     /**
      * Construct the callback validation pipeline.
      */
@@ -27,6 +30,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
         private readonly ExistingUserDiscoveryService $users,
         private readonly ?PrepareIdentityLinkService $identityLinks = null,
         private readonly ?CryptoOidcProofService $cryptoProofs = null,
+        private readonly ?AccountRecoveryOidcProofService $accountRecoveries = null,
     ) {
     }
 
@@ -54,6 +58,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
             $this->configuration->configurationHash()
         );
         $transaction = $claimed['transaction'];
+        $this->claimedPurpose = $transaction->purpose;
         try {
             if (
                 !hash_equals($this->configuration->issuer, $transaction->issuer) ||
@@ -71,6 +76,11 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
                     throw new OidcValidationException('identity_link_unavailable');
                 }
                 $this->identityLinks->prepare($transaction, $identity);
+            } elseif ($transaction->purpose === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY) {
+                if ($this->accountRecoveries === null) {
+                    throw new OidcValidationException('account_recovery_unavailable');
+                }
+                $this->accountRecoveries->verify($transaction, $identity);
             } elseif (
                 in_array($transaction->purpose, [
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
@@ -88,6 +98,8 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
             $resultTtl = match ($transaction->purpose) {
                 KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK =>
                     OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS,
+                KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY =>
+                    OidcConfigurationDto::ACCOUNT_RECOVERY_RESULT_TTL_SECONDS,
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_RELEASE => OidcConfigurationDto::CRYPTO_RESULT_TTL_SECONDS,
                 default => OidcConfigurationDto::RESULT_TTL_SECONDS,
@@ -122,7 +134,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
         string $state,
         #[SensitiveParameter]
         string $browserBinding
-    ): void {
+    ): string {
         if (!preg_match('/^[A-Za-z0-9_-]{43}$/', $state) || !preg_match('/^[A-Za-z0-9_-]{43}$/', $browserBinding)) {
             throw new OidcValidationException('invalid_provider_error_callback');
         }
@@ -131,6 +143,7 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
             $browserBinding,
             $this->configuration->configurationHash()
         );
+        $this->claimedPurpose = $claimed['transaction']->purpose;
         $this->transactions->fail($claimed['transaction']->id, 'provider_returned_error');
         if (
             $this->cryptoProofs !== null && in_array($claimed['transaction']->purpose, [
@@ -140,5 +153,13 @@ final class OidcCallbackService implements OidcCallbackProcessorInterface
         ) {
             $this->cryptoProofs->fail($claimed['transaction']);
         }
+
+        return $claimed['transaction']->purpose;
+    }
+
+    /** @inheritDoc */
+    public function lastClaimedPurpose(): ?string
+    {
+        return $this->claimedPurpose;
     }
 }

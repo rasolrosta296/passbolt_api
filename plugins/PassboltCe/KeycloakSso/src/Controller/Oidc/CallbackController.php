@@ -12,6 +12,7 @@ use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
 use Passbolt\KeycloakSso\Error\Exception\OidcValidationException;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Audit\OidcAuditService;
+use Passbolt\KeycloakSso\Service\Oidc\OidcCallbackProcessorInterface;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCookieService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -35,6 +36,8 @@ final class CallbackController extends AppController
     public function callback(): ResponseInterface
     {
         $audit = new OidcAuditService();
+        $failureRoute = '/auth/keycloak/error.json';
+        $callback = null;
         try {
             $state = $this->scalarQuery('state');
             $binding = $this->getRequest()->getCookie(OidcCookieService::BROWSER_BINDING_COOKIE);
@@ -43,7 +46,10 @@ final class CallbackController extends AppController
             }
             $callback = $this->serviceFactory()->callback();
             if ($this->getRequest()->getQuery('error') !== null) {
-                $callback->failProviderResponse($state, $binding);
+                $purpose = $callback->failProviderResponse($state, $binding);
+                if ($purpose === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY) {
+                    $failureRoute = '/auth/keycloak/recover/error';
+                }
                 throw new OidcValidationException('provider_returned_error');
             }
             $codeValue = $this->getRequest()->getQuery('code');
@@ -56,6 +62,9 @@ final class CallbackController extends AppController
             } elseif ($result->purpose === KeycloakSsoTransaction::PURPOSE_IDENTITY_LINK) {
                 $cookie = OidcCookieService::linkResult($result->token);
                 $resultRoute = '/auth/keycloak/link/confirm';
+            } elseif ($result->purpose === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY) {
+                $cookie = OidcCookieService::accountRecoveryResult($result->token);
+                $resultRoute = '/auth/keycloak/recover/complete';
             } elseif (
                 in_array($result->purpose, [
                 KeycloakSsoTransaction::PURPOSE_CRYPTO_ENROLLMENT,
@@ -79,6 +88,12 @@ final class CallbackController extends AppController
 
             return $this->getResponse();
         } catch (Throwable $exception) {
+            if (
+                $callback instanceof OidcCallbackProcessorInterface &&
+                $callback->lastClaimedPurpose() === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY
+            ) {
+                $failureRoute = '/auth/keycloak/recover/error';
+            }
             $audit->failure($this->failureCategory($exception));
             $this->setResponse(
                 $this->getResponse()
@@ -86,7 +101,7 @@ final class CallbackController extends AppController
                     ->withHeader('Cache-Control', 'no-store')
                     ->withHeader('Pragma', 'no-cache')
             );
-            $this->redirect('/auth/keycloak/error.json', 303);
+            $this->redirect($failureRoute, 303);
 
             return $this->getResponse();
         }

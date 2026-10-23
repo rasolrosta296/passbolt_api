@@ -14,17 +14,28 @@ final class SuccessfulOidcCallbackProcessor implements OidcCallbackProcessorInte
      */
     public ?array $received = null;
 
+    public function __construct(
+        private readonly string $purpose = KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF
+    ) {
+    }
+
     public function process(string $state, string $browserBinding, string $code): OidcCallbackResult
     {
         $this->received = ['state' => $state, 'binding' => $browserBinding, 'code' => $code];
 
         return new OidcCallbackResult(
             str_repeat('r', 43),
-            KeycloakSsoTransaction::PURPOSE_IDENTITY_PROOF
+            $this->purpose
         );
     }
 
-    public function failProviderResponse(string $state, string $browserBinding): void
+    public function failProviderResponse(string $state, string $browserBinding): string
     {
+        return $this->purpose;
+    }
+
+    public function lastClaimedPurpose(): ?string
+    {
+        return $this->purpose;
     }
 }

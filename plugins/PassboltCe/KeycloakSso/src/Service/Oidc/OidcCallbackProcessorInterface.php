@@ -19,5 +19,8 @@ interface OidcCallbackProcessorInterface
     /**
      * Consume a valid transaction when the provider reports an error.
      */
-    public function failProviderResponse(string $state, string $browserBinding): void;
+    public function failProviderResponse(string $state, string $browserBinding): string;
+
+    /** Return the purpose of a transaction already claimed during this callback. */
+    public function lastClaimedPurpose(): ?string;
 }

@@ -27,6 +27,7 @@ final class OidcCookieServiceTest extends TestCase
         $this->assertSame(60, OidcConfigurationDto::RESULT_TTL_SECONDS);
         $this->assertSame(300, OidcConfigurationDto::IDENTITY_LINK_RESULT_TTL_SECONDS);
         $this->assertSame(300, OidcConfigurationDto::CRYPTO_RESULT_TTL_SECONDS);
+        $this->assertSame(60, OidcConfigurationDto::ACCOUNT_RECOVERY_RESULT_TTL_SECONDS);
         $this->assertCookieTtl(
             OidcCookieService::result(str_repeat('r', 43)),
             OidcConfigurationDto::RESULT_TTL_SECONDS
@@ -38,6 +39,10 @@ final class OidcCookieServiceTest extends TestCase
         $this->assertCookieTtl(
             OidcCookieService::cryptoResult(str_repeat('c', 43)),
             OidcConfigurationDto::CRYPTO_RESULT_TTL_SECONDS
+        );
+        $this->assertCookieTtl(
+            OidcCookieService::accountRecoveryResult(str_repeat('a', 43)),
+            OidcConfigurationDto::ACCOUNT_RECOVERY_RESULT_TTL_SECONDS
         );
     }
 

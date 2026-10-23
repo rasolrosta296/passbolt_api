@@ -8,6 +8,7 @@ use Cake\I18n\DateTime;
 use Cake\ORM\Locator\LocatorAwareTrait;
 use Passbolt\KeycloakSso\Error\Exception\IdentityLinkException;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoCryptoEnrollment;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Audit\CryptoSsoAuditService;
 use Passbolt\KeycloakSso\Service\Audit\IdentityLinkAuditService;
 
@@ -30,9 +31,40 @@ final class UnlinkIdentityService
     {
         $identities = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoIdentities');
         $enrollments = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoCryptoEnrollments');
+        $transactions = $this->fetchTable('Passbolt/KeycloakSso.KeycloakSsoTransactions');
         /** @var \Cake\Database\Connection $connection */
         $connection = ConnectionManager::get('default');
-        $clientIds = $connection->transactional(function () use ($identities, $enrollments, $userId): array {
+        $clientIds = $connection->transactional(function () use (
+            $identities,
+            $enrollments,
+            $transactions,
+            $userId
+        ): array {
+            $recoveryStatuses = [
+                KeycloakSsoTransaction::STATUS_PENDING,
+                KeycloakSsoTransaction::STATUS_PROCESSING,
+                KeycloakSsoTransaction::STATUS_SUCCEEDED,
+            ];
+            $transactions->find()->select(['id'])->where([
+                'issuer' => $this->issuer,
+                'requested_user_id' => $userId,
+                'purpose' => KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY,
+                'status IN' => $recoveryStatuses,
+            ])->orderByAsc('id')->epilog('FOR UPDATE')->all()->toList();
+            $transactions->updateAll([
+                'status' => KeycloakSsoTransaction::STATUS_FAILED,
+                'result_token_hash' => null,
+                'result_expires' => null,
+                'pkce_verifier_ciphertext' => null,
+                'link_identity_ciphertext' => null,
+                'failure_code' => 'identity_unlinked',
+                'modified' => DateTime::now(),
+            ], [
+                'issuer' => $this->issuer,
+                'requested_user_id' => $userId,
+                'purpose' => KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY,
+                'status IN' => $recoveryStatuses,
+            ]);
             /** @var \Passbolt\KeycloakSso\Model\Entity\KeycloakSsoIdentity|null $identity */
             $identity = $identities->find()->where(['issuer' => $this->issuer, 'user_id' => $userId])
                 ->epilog('FOR UPDATE')->first();

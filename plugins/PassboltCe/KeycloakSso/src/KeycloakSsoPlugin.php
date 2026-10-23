@@ -22,6 +22,8 @@ use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactory;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkServiceFactoryInterface;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactory;
 use Passbolt\KeycloakSso\Service\Oidc\OidcServiceFactoryInterface;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryServiceFactory;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryServiceFactoryInterface;
 
 final class KeycloakSsoPlugin extends BasePlugin
 {
@@ -54,6 +56,8 @@ final class KeycloakSsoPlugin extends BasePlugin
         $container->add(OidcServiceFactoryInterface::class)->setConcrete(OidcServiceFactory::class);
         $container->add(IdentityLinkServiceFactoryInterface::class)->setConcrete(IdentityLinkServiceFactory::class);
         $container->add(CryptoSsoServiceFactoryInterface::class)->setConcrete(CryptoSsoServiceFactory::class);
+        $container->add(AccountRecoveryServiceFactoryInterface::class)
+            ->setConcrete(AccountRecoveryServiceFactory::class);
         $container->add(KeycloakSsoReconcileUsersCommand::class)
             ->addArgument(ResourcesExpireResourcesServiceInterface::class);
         $container->add(KeycloakSsoDeleteUserCommand::class)

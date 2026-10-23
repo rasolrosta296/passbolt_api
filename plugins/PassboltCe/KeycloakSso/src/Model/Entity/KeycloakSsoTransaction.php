@@ -40,6 +40,7 @@ final class KeycloakSsoTransaction extends Entity
 
     public const PURPOSE_IDENTITY_PROOF = 'identity_proof';
     public const PURPOSE_IDENTITY_LINK = 'identity_link';
+    public const PURPOSE_ACCOUNT_RECOVERY = 'account_recovery';
     public const PURPOSE_CRYPTO_ENROLLMENT = 'crypto_enrollment';
     public const PURPOSE_CRYPTO_RELEASE = 'crypto_release';
 

@@ -4,13 +4,16 @@ declare(strict_types=1);
 namespace Passbolt\KeycloakSso\Test\TestCase\Service\Oidc;
 
 use App\Model\Entity\User;
+use App\Test\Factory\AuthenticationTokenFactory;
 use App\Test\Factory\UserFactory;
 use Cake\ORM\TableRegistry;
 use Firebase\JWT\JWT;
 use OpenSSLAsymmetricKey;
 use Passbolt\KeycloakSso\Error\Exception\OidcTransactionException;
+use Passbolt\KeycloakSso\Model\Dto\AccountRecoveryConfigurationDto;
 use Passbolt\KeycloakSso\Model\Dto\OidcCallbackResult;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
+use Passbolt\KeycloakSso\Model\Dto\PendingIdentityLink;
 use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
@@ -21,6 +24,8 @@ use Passbolt\KeycloakSso\Service\Oidc\IdTokenValidationService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcCallbackService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcDiscoveryService;
 use Passbolt\KeycloakSso\Service\Oidc\OidcMetadataCache;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryIdentityProofProtector;
+use Passbolt\KeycloakSso\Service\Recovery\AccountRecoveryOidcProofService;
 use Passbolt\KeycloakSso\Service\Transaction\ClaimOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\CreateOidcTransactionService;
 use Passbolt\KeycloakSso\Service\Transaction\TransactionSecretProtector;
@@ -57,6 +62,21 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
         );
     }
 
+    public function testAccountRecoveryCallbackCreatesOnlyOneTimeRecoveryProof(): void
+    {
+        $before = AuthenticationTokenFactory::count();
+
+        $flow = $this->processCallback(KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY);
+
+        $this->assertSame(KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY, $flow['result']->purpose);
+        $this->assertNotNull($flow['transaction']->requested_user_id);
+        $this->assertResultTtl(
+            $flow['transaction'],
+            OidcConfigurationDto::ACCOUNT_RECOVERY_RESULT_TTL_SECONDS
+        );
+        $this->assertSame($before, AuthenticationTokenFactory::count());
+    }
+
     /**
      * @return array{
      *   result: OidcCallbackResult,
@@ -72,6 +92,16 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
         self::assertInstanceOf(User::class, $user);
         $configuration = $this->configuration();
         $protector = new TransactionSecretProtector($configuration->transactionEncryptionKey);
+        if ($purpose === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY) {
+            (new IdentityLinkPersistenceService())->create(
+                $user->id,
+                new PendingIdentityLink(
+                    $configuration->issuer,
+                    'immutable-keycloak-subject',
+                    $user->username
+                )
+            );
+        }
         $created = (new CreateOidcTransactionService($protector))->create(
             $configuration->issuer,
             $configuration->clientId,
@@ -93,6 +123,9 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
             'sub' => 'immutable-keycloak-subject',
             'email' => 'user@example.com',
             'email_verified' => true,
+            'auth_time' => $now,
+            'acr' => 'urn:keycloak:acr:mfa',
+            'amr' => ['otp'],
         ], $privateKey, 'RS256', 'current-key');
         $discovery = new OidcDiscoveryService(
             $configuration,
@@ -114,7 +147,14 @@ final class OidcCallbackServiceTest extends KeycloakSsoIntegrationTestCase
             new AuthorizationCodeExchangeService($configuration, $discovery, $tokenClient),
             new IdTokenValidationService($configuration, new StaticJwksProvider(['keys' => [$jwk]])),
             new ExistingUserDiscoveryService(),
-            $identityLinks
+            $identityLinks,
+            null,
+            $purpose === KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY
+                ? new AccountRecoveryOidcProofService(
+                    new AccountRecoveryIdentityProofProtector($protector),
+                    new AccountRecoveryConfigurationDto('urn:keycloak:acr:mfa', ['otp'])
+                )
+                : null
         );
 
         $result = $service->process($created->state, $created->browserBinding, 'one-time-code');

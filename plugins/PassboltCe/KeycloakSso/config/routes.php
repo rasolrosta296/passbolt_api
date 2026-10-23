@@ -31,6 +31,14 @@ $routes->plugin('Passbolt/KeycloakSso', ['path' => '/auth/keycloak'], function (
         ->setMethods(['GET']);
     $routes->connect('/link/error', ['controller' => 'IdentityLink', 'action' => 'failure'])
         ->setMethods(['GET']);
+    $routes->connect('/recover', ['controller' => 'AccountRecovery', 'action' => 'index'])
+        ->setMethods(['GET']);
+    $routes->connect('/recover/start', ['controller' => 'AccountRecovery', 'action' => 'start'])
+        ->setMethods(['POST']);
+    $routes->connect('/recover/complete', ['controller' => 'AccountRecovery', 'action' => 'complete'])
+        ->setMethods(['GET']);
+    $routes->connect('/recover/error', ['controller' => 'AccountRecovery', 'action' => 'failure'])
+        ->setMethods(['GET']);
     $routes->connect('/unlink', ['controller' => 'IdentityLink', 'action' => 'unlink'])
         ->setMethods(['POST']);
     $routes->connect('/crypto/enroll/start', ['controller' => 'CryptoSso', 'action' => 'startEnrollment'])

@@ -10,6 +10,7 @@ use Firebase\JWT\JWT;
 use OpenSSLAsymmetricKey;
 use Passbolt\KeycloakSso\Model\Dto\OidcConfigurationDto;
 use Passbolt\KeycloakSso\Model\Dto\PendingIdentityLink;
+use Passbolt\KeycloakSso\Model\Entity\KeycloakSsoTransaction;
 use Passbolt\KeycloakSso\Service\Identity\ExistingUserDiscoveryService;
 use Passbolt\KeycloakSso\Service\Identity\IdentityLinkPersistenceService;
 use Passbolt\KeycloakSso\Service\Oidc\AuthorizationCodeExchangeService;
@@ -189,6 +190,49 @@ final class CallbackSecurityTest extends KeycloakSsoIntegrationTestCase
         $this->assertRedirect('/auth/keycloak/error.json');
         $this->assertStringNotContainsString($sensitiveCode, $this->_response->getHeaderLine('Location'));
         $this->assertSame('no-store', $this->_response->getHeaderLine('Cache-Control'));
+        $this->assertEmpty($this->getSession()->read('Auth.user'));
+    }
+
+    public function testAccountRecoveryCallbackSetsOnlyPurposeBoundCookieAndDoesNotAuthenticate(): void
+    {
+        $factory = new StaticOidcServiceFactory(
+            new StaticAuthorizationRequestProvider(),
+            new SuccessfulOidcCallbackProcessor(KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY),
+            new RecordingOidcResultConsumer()
+        );
+        $this->mockService(OidcServiceFactoryInterface::class, static fn () => $factory);
+        $state = str_repeat('s', 43);
+        $binding = str_repeat('b', 43);
+        $before = AuthenticationTokenFactory::count();
+        $this->configRequest(['cookies' => [OidcCookieService::BROWSER_BINDING_COOKIE => $binding]]);
+
+        $this->get('/auth/keycloak/callback?state=' . $state . '&code=one-time-code');
+
+        $this->assertResponseCode(303);
+        $this->assertRedirect('/auth/keycloak/recover/complete');
+        $this->assertCookieSet(OidcCookieService::ACCOUNT_RECOVERY_RESULT_COOKIE);
+        $this->assertCookieNotSet(OidcCookieService::RESULT_COOKIE);
+        $this->assertSame($before, AuthenticationTokenFactory::count());
+        $this->assertEmpty($this->getSession()->read('Auth.user'));
+    }
+
+    public function testAccountRecoveryProviderErrorUsesGenericRecoveryPage(): void
+    {
+        $factory = new StaticOidcServiceFactory(
+            new StaticAuthorizationRequestProvider(),
+            new SuccessfulOidcCallbackProcessor(KeycloakSsoTransaction::PURPOSE_ACCOUNT_RECOVERY),
+            new RecordingOidcResultConsumer()
+        );
+        $this->mockService(OidcServiceFactoryInterface::class, static fn () => $factory);
+        $state = str_repeat('s', 43);
+        $binding = str_repeat('b', 43);
+        $this->configRequest(['cookies' => [OidcCookieService::BROWSER_BINDING_COOKIE => $binding]]);
+
+        $this->get('/auth/keycloak/callback?state=' . $state . '&error=access_denied');
+
+        $this->assertResponseCode(303);
+        $this->assertRedirect('/auth/keycloak/recover/error');
+        $this->assertStringNotContainsString('access_denied', $this->_response->getHeaderLine('Location'));
         $this->assertEmpty($this->getSession()->read('Auth.user'));
     }
 

@@ -16,6 +16,9 @@ URI must use that same origin when Passbolt full-base-URL enforcement is active.
 | `KEYCLOAK_SSO_CLIENT_SECRET` | Yes | Non-empty Keycloak confidential-client secret with no surrounding whitespace or control characters. Store only in the deployment secret store. |
 | `KEYCLOAK_SSO_REDIRECT_URI` | No | Exact HTTPS URL ending in `/auth/keycloak/callback`; no query, fragment, credentials, or wildcard. |
 | `KEYCLOAK_SSO_TRANSACTION_ENCRYPTION_KEY` | Yes | Canonical base64 encoding of exactly 32 random bytes. Protects short-lived transaction material and keyed configuration hashes. |
+| `KEYCLOAK_SSO_ACCOUNT_RECOVERY_ENABLED` | No | Independent explicit boolean gate for Keycloak-assisted second-browser setup. Missing means disabled. |
+| `KEYCLOAK_SSO_ACCOUNT_RECOVERY_ACR` | No | Required exact ACR for account-recovery identity proof when the independent gate is enabled. It is intentionally separate from cryptographic-release policy. |
+| `KEYCLOAK_SSO_ACCOUNT_RECOVERY_AMR` | No | Optional JSON array using the same strict format as release AMR. Every configured value is required exactly. Empty/unset disables AMR enforcement for recovery. |
 | `KEYCLOAK_SSO_RELEASE_ACR` | No | Required exact ACR text, non-empty and at most 255 bytes. Keycloak must return it for every cryptographic release. |
 | `KEYCLOAK_SSO_RELEASE_AMR` | No | Optional. Empty/unset disables AMR enforcement. Otherwise a JSON array of 1–16 unique strings, each 1–64 bytes with no surrounding whitespace. Every value is required exactly. |
 | `KEYCLOAK_SSO_SERVER_SHARE_ACTIVE_KEY_ID` | No | Active KEK identifier, 1–64 lowercase ASCII letters, digits, dot, underscore, or hyphen. It must exist in the key ring. |
@@ -50,6 +53,16 @@ identity namespace and require explicit relinking and fresh enrollment.
 Changing ACR or AMR policy can cause in-flight releases to fail their current
 proof and should be done during a controlled window. It never weakens an
 already-required proof.
+
+The independent account-recovery gate is advertised in anonymous site settings
+only as a boolean. Its ACR/AMR policy and all secrets remain private. Enabling
+it permits a linked Keycloak identity to replace the emailed identity-verification
+step for a second browser. It does not replace the recovery kit, private-key
+passphrase, or unchanged Passbolt recovery/GPGAuth proof.
+After the 60-second plugin result is atomically exchanged, the generated core
+recovery token follows `PASSBOLT_AUTH_RECOVER_TOKEN_EXPIRY` (10 days by default),
+exactly like email recovery. Choose that global recovery-link lifetime as part
+of the deployment security policy.
 
 Adding a KEK or changing the active key does not alter client envelopes. Do not
 remove an old KEK until every active row has been successfully rewrapped and

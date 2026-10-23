@@ -87,6 +87,37 @@ automatically relinks or migrates an identity. A changed issuer is a distinct
 provider namespace. Unlinking affects only the authenticated user's link for
 the configured issuer and never disables normal GPGAuth.
 
+## Keycloak-assisted second-browser recovery boundary
+
+This independently gated flow replaces only the emailed identity-verification
+step of Passbolt's existing recovery process. It requires a previously linked
+exact `(issuer, subject)` identity, a fresh interactive OIDC proof with
+`prompt=login`, `max_age=0`, exact configured ACR, bounded `auth_time`, and any
+configured AMR values. Email is not used to select the account.
+
+The callback creates only a short-lived, purpose-bound, one-time capability.
+The exact identity-row UUID, user UUID, issuer, and subject accepted by the
+callback are authenticated-encrypted in the short-lived transaction. Atomically
+consuming the capability locks and rechecks that exact identity link and the
+active, nondeleted, nondisabled Passbolt user before minting an ordinary core
+`recover` token and redirecting into the unchanged
+`/setup/recover/start/{user}/{token}` flow. Unlinking an identity atomically
+invalidates any outstanding account-recovery result for that issuer and user;
+an unlink race therefore cannot turn a stale OIDC result into a recovery token.
+The new browser must still import the user's existing recovery-kit private key,
+provide its passphrase locally, and complete Passbolt's existing private-key
+validation and GPGAuth. Keycloak never supplies or receives either value.
+
+OIDC completion and recovery-token creation do not create a Passbolt session,
+JWT, refresh token, or `Auth.user`. The plugin capability is single-use and
+expires after 60 seconds. Once exchanged, the ordinary core recovery token uses
+Passbolt's unchanged configured recovery-token lifecycle (10 days by default),
+and is deactivated by normal recovery completion or abort—not merely by opening
+the recovery URL. Operators should set `PASSBOLT_AUTH_RECOVER_TOKEN_EXPIRY` to
+their accepted recovery-link lifetime for both email and Keycloak-assisted
+recovery. A user disabled between OIDC proof and capability consumption is
+rejected. The ordinary email recovery path remains available.
+
 ## Cryptographic release boundary
 
 Each browser-profile enrollment requires an existing GPGAuth session, CSRF,
@@ -148,6 +179,6 @@ key only after verification and backup-retention review.
 
 ## Deferred work
 
-Firefox/Safari support, general UI polish, WebAuthn/platform binding,
-device-to-device enrollment, and account-recovery changes remain outside the
-first release. OIDC-derived Passbolt session creation remains prohibited.
+Firefox/Safari support, general UI polish, WebAuthn/platform binding, and
+device-to-device cryptographic enrollment remain outside the first release.
+OIDC-derived Passbolt session creation remains prohibited.

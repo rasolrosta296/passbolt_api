@@ -22,11 +22,14 @@ feature.
   profile while normally authenticated through GPGAuth.
 - One Keycloak identity per issuer and Passbolt user.
 
-Firefox, Safari, WebAuthn/platform binding, device-to-device enrollment, and
-Keycloak-only cryptographic account recovery are not supported. Optional
-administrator-event provisioning can create an ordinary inactive Passbolt user
-and setup invitation; it never creates keys, links an identity, or authenticates
-the user.
+Firefox, Safari, WebAuthn/platform binding, device-to-device cryptographic
+enrollment, and Keycloak-only private-key recovery are not supported. An
+independently gated Keycloak-assisted second-browser flow can replace only the
+email identity-verification step for an already linked user; the browser must
+still import the existing recovery kit and prove its passphrase through the
+unchanged Passbolt recovery flow. Optional administrator-event provisioning can
+create an ordinary inactive Passbolt user and setup invitation; it never creates
+keys, links an identity, or authenticates the user.
 
 ## Installation order
 
@@ -101,6 +104,10 @@ no identity link -> identity linked -> browser-profile enrolled -> SSO usable
   ownership checks; it is disabled by default.
 - Loss of a profile or Keycloak access falls back to normal Passbolt login and
   recovery. Keycloak alone never provisions a new browser profile.
+- On a second browser, an already linked user may complete fresh Keycloak
+  verification instead of waiting for a recovery email, but must still import
+  the existing recovery kit and enter its passphrase locally. The OIDC callback
+  itself never creates a Passbolt authenticated state.
 
 ## Accepted Standard-mode limitation
 
